@@ -1,0 +1,22 @@
+# Pipeline Lakeflow (SDP, serverless): bronze e silver dos sinistros. Nomes vêm das variáveis do bundle (D-016).
+resources:
+  pipelines:
+    pipeline_sinistros:
+      name: sinistros_clima_pipeline
+      catalog: ${var.catalogo}
+      schema: ${var.prefixo_schema}bronze
+      serverless: true
+      continuous: false
+      channel: CURRENT
+      root_path: ../src/pipeline
+      libraries:
+        - glob:
+            include: ../src/pipeline/**
+      environment:
+        dependencies:
+          - --editable ${workspace.file_path}
+      configuration:
+        catalogo: ${var.catalogo}
+        schema_bronze: ${var.prefixo_schema}bronze
+        schema_silver: ${var.prefixo_schema}silver
+        volume_arquivos: /Volumes/${var.catalogo}/${var.prefixo_schema}landing/arquivos
