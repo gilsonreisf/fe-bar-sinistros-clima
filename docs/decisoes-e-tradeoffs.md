@@ -234,3 +234,19 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - o `CREATE CATALOG` ficou em `src/governanca/00_catalogo_opcional.sql`, para workspaces em que há permissão.
 
 **Motivo:** o asset fica reutilizável em qualquer workspace ou cliente só com a troca do `.env` e das variáveis do bundle. Um teste garante que nenhum `.sql` do projeto tenha placeholder sem valor ou nome do FEVM fixo.
+
+## D-017: Resultado das verificações do workspace (spec, seção 12)
+
+**Data:** 2026-11-20
+
+**Contexto:** as verificações rodaram no workspace FEVM com `scripts/verificar_recursos.py`. A evidência está em `evidencias/00a-verificacoes-ambiente.md`. A seção 12 da spec define uma regra de decisão para cada item.
+
+**Escolhas:**
+- **Modelo do parecer:** `databricks-claude-sonnet-5-5`, o Claude Sonnet mais recente entre os disponíveis (`4-5`, `4-6`, `5` e `5-5`). O endpoint está `READY` e respondeu a um `ai_query` de teste.
+- **Governança:** usar **políticas ABAC** baseadas em tags, porque o `SHOW POLICIES` executou. Se a criação da política falhar na fase 7, o plano B continua sendo as funções de máscara e de filtro por tabela.
+- **DAB:** o schema do bundle (CLI 1.25) aceita todos os recursos verificados: pipelines, jobs, apps, endpoints, experimentos, modelos registrados, `postgres_projects`, `postgres_synced_tables`, `genie_spaces`, dashboards, volumes e schemas. Esses recursos vão para o bundle, o que reduz o escopo do `provisionar.py` (D-013) ao que o DAB não declara: metric views, tags e grants de governança e a ativação do Lakehouse Sync. As synced tables usam `postgres_synced_tables`, não o recurso descontinuado `synced_database_tables`.
+- **`ai_parse_document`:** funciona. Ele extraiu o texto de um PDF de teste com acentos e valores em reais.
+- **Custo de `ai_parse_document` e `ai_query`:** ainda não medido. Na fase 2, o pipeline roda primeiro com o lote 1 (800 avisos), e o custo é medido em `system.billing` antes de publicar os demais lotes.
+- **Lakehouse Sync:** a API de CDF está presente no SDK, e a ativação real fica para a fase 6. O plano B (job agendado de Lakebase para Delta) continua valendo.
+
+**Motivo:** aplicar as regras da spec com o que foi medido no workspace, sem supor disponibilidade.
