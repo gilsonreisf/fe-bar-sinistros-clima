@@ -216,3 +216,53 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **(2) Segunda fonte de evidência:** a evidência climática é `forte` quando o INMET (a até 30 km, com sinal) **ou** a Defesa Civil (ocorrência no município dentro da janela) confirmam o evento. Cada sinistro registra a fonte que confirmou.
 
 **Motivo:** é o que as seguradoras fazem na prática, aceitando o decreto ou registro da Defesa Civil como prova do evento. O caso fica fiel aos dados públicos reais e a solução fica mais justa com o segurado. Os dados curados, com as fontes, estão em `docs/dados/defesa-civil-sc-2026.md`.
+
+## D-016: Nomes de catálogo e schemas parametrizados (sem nome fixo no código)
+
+**Data:** 2026-11-20
+
+**Contexto:** no workspace FEVM, o `CREATE CATALOG` falhou: o usuário não tem essa permissão no metastore compartilhado. O FEVM já cria, junto com o workspace, o catálogo `fe_bar_sinistros_catalog`, em que o usuário tem ALL_PRIVILEGES. O plano previa o nome fixo `sinistros_clima` em scripts, SQL, caminhos de Volume e bundle.
+
+**Alternativas consideradas:**
+- Criar pelo FEVM um catálogo standalone `sinistros_clima` (TTL de 90 dias). Isso mantém o nome, mas cria mais um recurso para gerenciar e continua amarrando o código a um nome.
+- Trocar o nome fixo por `fe_bar_sinistros_catalog`. Funciona só neste workspace e o asset deixa de ser reutilizável.
+
+**Escolha:** usar o catálogo do FEVM e **parametrizar** os nomes:
+- `FE_BAR_CATALOGO` define o catálogo (padrão `sinistros_clima`; no FEVM, `fe_bar_sinistros_catalog`);
+- `FE_BAR_PREFIXO_SCHEMA` é um prefixo opcional dos schemas (padrão vazio), para várias instalações no mesmo catálogo;
+- o módulo `src/ambiente` é a fonte única dos nomes em Python; os `.sql` usam os placeholders `${catalogo}` e `${schema_<camada>}`, preenchidos pelo `executar_sql.py`, que falha se faltar valor; o bundle usa as variáveis `catalogo` e `prefixo_schema` (o target `dev` define o catálogo do FEVM);
+- o `CREATE CATALOG` ficou em `src/governanca/00_catalogo_opcional.sql`, para workspaces em que há permissão.
+
+**Motivo:** o asset fica reutilizável em qualquer workspace ou cliente só com a troca do `.env` e das variáveis do bundle. Um teste garante que nenhum `.sql` do projeto tenha placeholder sem valor ou nome do FEVM fixo.
+
+## D-017: Resultado das verificações do workspace (spec, seção 12)
+
+**Data:** 2026-11-20
+
+**Contexto:** as verificações rodaram no workspace FEVM com `scripts/verificar_recursos.py`. A evidência está em `evidencias/00a-verificacoes-ambiente.md`. A seção 12 da spec define uma regra de decisão para cada item.
+
+**Escolhas:**
+- **Modelo do parecer:** `databricks-claude-sonnet-5-5`, o Claude Sonnet mais recente entre os disponíveis (`4-5`, `4-6`, `5` e `5-5`). O endpoint está `READY` e respondeu a um `ai_query` de teste.
+- **Governança:** usar **políticas ABAC** baseadas em tags, porque o `SHOW POLICIES` executou. Se a criação da política falhar na fase 7, o plano B continua sendo as funções de máscara e de filtro por tabela.
+- **DAB:** o schema do bundle (CLI 1.25) aceita todos os recursos verificados: pipelines, jobs, apps, endpoints, experimentos, modelos registrados, `postgres_projects`, `postgres_synced_tables`, `genie_spaces`, dashboards, volumes e schemas. Esses recursos vão para o bundle, o que reduz o escopo do `provisionar.py` (D-013) ao que o DAB não declara: metric views, tags e grants de governança e a ativação do Lakehouse Sync. As synced tables usam `postgres_synced_tables`, não o recurso descontinuado `synced_database_tables`.
+- **`ai_parse_document`:** funciona. Ele extraiu o texto de um PDF de teste com acentos e valores em reais.
+- **Custo de `ai_parse_document` e `ai_query`:** ainda não medido. Na fase 2, o pipeline roda primeiro com o lote 1 (800 avisos), e o custo é medido em `system.billing` antes de publicar os demais lotes.
+- **Lakehouse Sync:** a API de CDF está presente no SDK, e a ativação real fica para a fase 6. O plano B (job agendado de Lakebase para Delta) continua valendo.
+
+**Motivo:** aplicar as regras da spec com o que foi medido no workspace, sem supor disponibilidade.
+
+## D-018: Ajustes da revisão independente das fases 0 e 1
+
+**Data:** 2026-11-20
+
+**Contexto:** a revisão independente ao fim da fase 1, feita antes de enviar os dados ao Volume, não encontrou nada crítico e apontou seis pontos importantes. Todos mudavam o conteúdo dos dados e foram corrigidos antes do upload, cada um com um teste que falhou antes da correção.
+
+**Escolhas:**
+- **Carteira de apólices (spec 4.2):** 40% da carteira é proporcional à **população do Censo 2022** (IBGE, tabela 4709, agora em `municipios_sc.csv`). Os outros 60% refletem a concentração regional da Vértice Seguros (fictícia) nos municípios atingidos, pelo peso da Defesa Civil. *Alternativa descartada:* 100% proporcional à população. Com 8 mil avisos concentrados em poucos municípios (premissa do caso), Biguaçu, com ~76 mil habitantes, teria mais avisos do que apólices. *Trade-off:* a Vértice é uma seguradora regional forte na Grande Florianópolis e no Oeste. Joinville, Blumenau e Chapecó passam a ter carteira grande e poucos sinistros, o que deixa a análise exposição × sinistralidade realista no Genie.
+- **Regra `contraria` (spec 4.3):** `contraria` exige estação válida **sem nenhum sinal**. Sinal parcial (ex.: chuva intensa sem rajada forte num aviso de granizo) agora é **inconclusivo** e vira `fraca`, indo para o regulador.
+- **Sinal de granizo:** o "sinal compatível" é a tempestade severa no período (chuva ≥ 10 mm/h **e** rajada ≥ 15 m/s, em qualquer hora da janela). O indicador horário `granizo_provavel` (as três condições na mesma hora, com queda de temperatura) é mais estrito e fica como detalhe para o parecer, não como condição da evidência. *Motivo:* as estações ficam a dezenas de km do local, e exigir as três condições na mesma hora marcaria como sem sinal a maior parte do granizo real.
+- **Histórico 2025:** os sinistros "sem estação" (20% do histórico) agora só nascem em local e data com evidência `fraca`, nunca `contraria`. O rótulo (`padrao` e `motivo_decisao`) saiu do landing e foi para `restrito/gabarito_historico_2025.csv`. No landing ficam só a decisão final e o valor pago, como numa base real de sinistros regulados.
+- **Layout do Volume:** uma pasta por entidade (`apolices/`, `segurados/`, `apolices_coberturas/`, `historico_sinistros/`, `clima_horario/` etc.), cada uma com um único schema, para um Auto Loader por pasta (spec 5).
+- **Publicação dos lotes:** o estado fica num arquivo por destino e guarda a impressão digital da geração. Publicar uma geração diferente no mesmo destino é recusado, e o gerador se recusa a apagar uma saída que já tem lotes publicados (opção `--forcar`).
+
+**Motivo:** a spec é a autoridade. Corrigir antes do upload evita reenviar tudo e reiniciar os checkpoints do pipeline nas fases seguintes.

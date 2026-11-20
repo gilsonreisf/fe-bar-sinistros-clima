@@ -102,7 +102,7 @@ O gerador usa Faker pt_BR e reportlab, com seed fixa.
 - **Distribuição dos avisos legítimos:** ~90% vão para os municípios com registro da Defesa Civil, em proporção às moradias atingidas. Os municípios sem número publicado recebem um peso mínimo (equivalente a 20 moradias). As datas de ocorrência caem dentro de cada episódio.
 - **Os ~10% restantes:** ocorrências menores espalhadas por agosto e setembro (Bela Vista do Toldo, Capinzal e outras), nas datas em que o INMET registrou sinal.
 - **Padrão "sem evento climático":** gerado em municípios e datas **sem** registro da Defesa Civil **e** sem sinal do INMET.
-- **Carteira de apólices:** distribuída pelos municípios de SC de forma proporcional à população (premissa nossa), para que a exposição seja realista.
+- **Carteira de apólices (D-018):** 40% distribuída pelos municípios de SC de forma proporcional à população do Censo 2022 (IBGE), para que a exposição seja realista, e 60% concentrada nos municípios atingidos, porque a Vértice é uma seguradora regional forte na Grande Florianópolis e no Oeste (premissa nossa).
 
 **Distribuição de padrões**, igual no histórico e no evento:
 
@@ -128,12 +128,13 @@ O gerador usa Faker pt_BR e reportlab, com seed fixa.
 - **Força da evidência climática** na janela de D−1 a D+1 da data de ocorrência, combinando **duas fontes** (D-015):
   - `forte`: há uma estação do INMET válida a até 30 km com sinal compatível com a causa declarada, **ou** há registro de ocorrência da Defesa Civil no município dentro da janela;
   - `fraca`: nenhuma das duas fontes confirma o evento, e falta dado (estação a mais de 30 km ou variável ausente);
-  - `contraria`: há uma estação válida a até 30 km sem nenhum sinal **e** não há registro da Defesa Civil.
+  - `contraria`: há uma estação válida a até 30 km sem nenhum sinal **e** não há registro da Defesa Civil. Sinal parcial (só parte das variáveis da causa acima do limiar) é inconclusivo e conta como `fraca` (D-018).
+- **Sinal compatível com granizo (D-018):** chuva ≥ 10 mm/h e rajada ≥ 15 m/s na janela. O indicador `granizo_provavel` é um detalhe adicional para o parecer.
 - **Fonte registrada:** cada sinistro guarda qual fonte confirmou o evento (`inmet`, `defesa_civil` ou `ambas`), para auditoria e para o parecer.
 - **Evidência fraca nunca leva à recusa.** O caso vai para o regulador.
 
 ### 4.4 Modelo de dados
-Catálogo `sinistros_clima`.
+Catálogo configurável: `FE_BAR_CATALOGO`, com padrão `sinistros_clima` (no FEVM, `fe_bar_sinistros_catalog`). Os schemas abaixo aceitam um prefixo opcional (`FE_BAR_PREFIXO_SCHEMA`, padrão vazio). Nenhum nome fica fixo no código (D-016).
 
 | Schema | Objetos |
 |---|---|
@@ -223,7 +224,7 @@ Catálogo `sinistros_clima`.
 - **`operacao.atribuicoes`:** quando o regulador assume um sinistro, o app usa `SELECT … FOR UPDATE SKIP LOCKED`, de modo que dois reguladores nunca peguem o mesmo caso.
 - **`operacao.decisoes_regulador`:** recebe **apenas inserções**. Os campos são `id_decisao` (UUID gerado no cliente, com restrição de unicidade), `id_aviso`, `regulador`, `decisao`, `valor_aprovado`, `motivo`, `concordou_com_ia`, `versao_modelo`, `versao_prompt`, `trace_id` e `criado_em`.
 - **`operacao.reanalises`:** o resultado de cada "Reanalisar com IA", com `trace_id`.
-- **Volta ao lakehouse:** o Lakehouse Sync (Beta) leva o schema `operacao` para `sinistros_clima.operacional`, como histórico SCD2. **Plano B**, se o recurso não estiver disponível: um job agendado lê o Lakebase e grava em Delta.
+- **Volta ao lakehouse:** o Lakehouse Sync (Beta) leva o schema `operacao` para `<catálogo>.operacional`, como histórico SCD2. **Plano B**, se o recurso não estiver disponível: um job agendado lê o Lakebase e grava em Delta.
 
 ### 7.2 App (AppKit, React + TypeScript)
 

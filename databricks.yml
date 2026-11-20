@@ -1,0 +1,24 @@
+bundle:
+  name: sinistros_clima
+
+include:
+  - recursos/*.yml
+
+variables:
+  catalogo:
+    description: Catálogo do Unity Catalog do projeto
+    default: sinistros_clima
+  prefixo_schema:
+    description: Prefixo opcional dos schemas (vazio = sem prefixo)
+    default: ""
+  warehouse_id:
+    description: ID do SQL Warehouse serverless
+
+targets:
+  dev:
+    default: true
+    workspace:
+      profile: fe-bar
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalogo: fe_bar_sinistros_catalog  # catálogo criado pelo FEVM (D-016)

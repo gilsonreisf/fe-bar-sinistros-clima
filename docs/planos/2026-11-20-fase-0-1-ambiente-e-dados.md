@@ -5,11 +5,12 @@
 **Objetivo:** deixar o ambiente Databricks pronto e verificado, e produzir, com testes, todos os dados do caso (públicos e sintéticos), já carregados no Volume do UC e prontos para o pipeline da fase 2.
 
 **Arquitetura:**
-- Dois pacotes Python locais, gerenciados com uv:
+- Três pacotes Python locais, gerenciados com uv:
+  - `ambiente`: nomes do catálogo, dos schemas e dos volumes, lidos de variáveis de ambiente (D-016);
   - `regras`: regras de negócio compartilhadas (clima e evidência), usadas pelo gerador e depois pelo pipeline;
   - `dados_sinteticos`: leitores dos dados públicos, gerador sintético e PDFs.
 - Scripts em `scripts/` preparam os dados públicos, executam SQL no warehouse, verificam os recursos do workspace e publicam os lotes do evento no Volume.
-- A geração roda localmente, com seed fixa. Os arquivos sobem para `/Volumes/sinistros_clima/...` pela CLI e pelo SDK.
+- A geração roda localmente, com seed fixa. Os arquivos sobem para `/Volumes/<catálogo>/<schema landing>/arquivos/...` pela CLI e pelo SDK.
 
 **Stack:** Python 3.12, uv, pandas, numpy, Faker (pt_BR), reportlab, pypdf (testes), databricks-sdk, Databricks CLI v1.25+, FEVM (workspace serverless na AWS).
 
@@ -21,7 +22,7 @@
 - **Nenhum cliente real** é citado. A seguradora é "Vértice Seguros (fictícia)".
 - **Dados:** somente sintéticos ou públicos. CPF no formato válido, gerado pelo Faker (fictício).
 - **Profile da CLI e do SDK:** `fe-bar`. Variáveis de ambiente: `DATABRICKS_CONFIG_PROFILE=fe-bar` e `FE_BAR_WAREHOUSE_ID=<id>`.
-- **UC:** catálogo `sinistros_clima`; schemas `landing`, `bronze`, `silver`, `gold`, `ml`, `operacional`; volumes `sinistros_clima.landing.arquivos` e `sinistros_clima.ml.restrito`.
+- **UC (parametrizado, D-016):** nenhum nome de catálogo ou schema fica fixo no código. O catálogo vem de `FE_BAR_CATALOGO` (padrão `sinistros_clima`; no FEVM, `fe_bar_sinistros_catalog`) e os schemas `landing`, `bronze`, `silver`, `gold`, `ml` e `operacional` recebem o prefixo opcional `FE_BAR_PREFIXO_SCHEMA` (padrão vazio). Volumes: `<catálogo>.<landing>.arquivos` e `<catálogo>.<ml>.restrito`. Python lê os nomes do módulo `ambiente`; os `.sql` usam os placeholders `${catalogo}` e `${schema_<camada>}`; o bundle usa as variáveis `catalogo` e `prefixo_schema`.
 - **Compute:** apenas serverless.
 - **Seed global:** `20260920`.
 - **Limiares climáticos de referência (spec 4.3):**
@@ -193,14 +194,18 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 
 ### Tarefa 0.3: Executor de SQL e criação do catálogo
 
+> **Revisão na execução (D-016):** o `CREATE CATALOG` falhou por falta de permissão no metastore do FEVM. Por decisão do autor, os nomes passaram a ser parametrizados: módulo `src/ambiente` (com `testes/test_config_ambiente.py`), `aplicar_variaveis(sql, variaveis)` no executor, e o SQL dividido em `00_catalogo_opcional.sql` e `01_schemas_e_volumes.sql`.
+
 **Arquivos:**
-- Criar: `scripts/executar_sql.py`, `src/governanca/00_catalogo_e_schemas.sql`, `testes/test_executar_sql.py`
+- Criar: `src/ambiente/__init__.py`, `scripts/executar_sql.py`, `src/governanca/00_catalogo_opcional.sql`, `src/governanca/01_schemas_e_volumes.sql`, `testes/test_config_ambiente.py`, `testes/test_executar_sql.py`
 
 **Interfaces:**
 - Produz:
   - `dividir_comandos(sql: str) -> list[str]`
   - `executar(w: WorkspaceClient, warehouse_id: str, comando: str) -> tuple[list[str], list[list[str]]]`
-  - CLI: `uv run python scripts/executar_sql.py <arquivo.sql>`, que lê `FE_BAR_WAREHOUSE_ID` e `DATABRICKS_CONFIG_PROFILE`.
+  - `aplicar_variaveis(sql: str, variaveis: dict[str, str]) -> str`, que troca `${nome}` e falha se faltar valor;
+  - `ambiente.carregar_ambiente(env=os.environ) -> Ambiente`, com `catalogo`, `schema(camada)`, `volume_arquivos`, `volume_restrito` e `variaveis_sql()`;
+  - CLI: `uv run python scripts/executar_sql.py <arquivo.sql>`, que lê `FE_BAR_WAREHOUSE_ID`, `DATABRICKS_CONFIG_PROFILE`, `FE_BAR_CATALOGO` e `FE_BAR_PREFIXO_SCHEMA`.
 
 - [ ] **Passo 1: escrever o teste que falha** (`testes/test_executar_sql.py`):
 
@@ -300,43 +305,51 @@ if __name__ == "__main__":
 Comando: `uv run pytest testes/test_executar_sql.py -q`
 Esperado: `1 passed`
 
-- [ ] **Passo 5: criar** `src/governanca/00_catalogo_e_schemas.sql`:
+- [ ] **Passo 5: criar** `src/governanca/00_catalogo_opcional.sql` (só onde houver CREATE CATALOG):
 
 ```sql
--- Catálogo, schemas e volumes do projeto (idempotente).
-CREATE CATALOG IF NOT EXISTS sinistros_clima
+-- Opcional: cria o catálogo onde o usuário tem CREATE CATALOG no metastore.
+-- No FEVM não há essa permissão; lá o catálogo já vem criado com o workspace (D-016).
+CREATE CATALOG IF NOT EXISTS ${catalogo}
   COMMENT 'FE Bar: regulação inteligente de sinistros em eventos climáticos. Dados sintéticos e públicos.';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.landing
+```
+
+e `src/governanca/01_schemas_e_volumes.sql`:
+
+```sql
+-- Schemas e volumes do projeto (idempotente). O catálogo precisa existir (veja 00_catalogo_opcional.sql).
+-- Os nomes vêm do módulo `ambiente` (FE_BAR_CATALOGO e FE_BAR_PREFIXO_SCHEMA).
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_landing}
   COMMENT 'Arquivos brutos recebidos (avisos, documentos, apólices, clima, referências).';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.bronze
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_bronze}
   COMMENT 'Dados ingeridos como chegaram, com metadados de ingestão.';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.silver
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_silver}
   COMMENT 'Dados limpos, tipados, extraídos dos documentos e cruzados com apólice e clima.';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.gold
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_gold}
   COMMENT 'Sinistros analisados, fila de regulação, KPIs e metric views.';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.ml
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_ml}
   COMMENT 'Modelos, prompts, features, gabarito e avaliações.';
-CREATE SCHEMA IF NOT EXISTS sinistros_clima.operacional
+CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_operacional}
   COMMENT 'Histórico das tabelas operacionais do Lakebase (Lakehouse Sync).';
-CREATE VOLUME IF NOT EXISTS sinistros_clima.landing.arquivos
-  COMMENT 'Arquivos brutos: avisos/, documentos/, apolices/, clima/, referencias/, historico/.';
-CREATE VOLUME IF NOT EXISTS sinistros_clima.ml.restrito
+CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_landing}.arquivos
+  COMMENT 'Arquivos brutos, uma pasta por entidade: avisos/, documentos/, apolices/, segurados/, clima_horario/, historico_sinistros/ etc.';
+CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_ml}.restrito
   COMMENT 'Gabarito dos dados sintéticos. Acesso restrito; nunca lido pelo pipeline de features.';
-SHOW SCHEMAS IN sinistros_clima;
+SHOW SCHEMAS IN ${catalogo};
 ```
 
 - [ ] **Passo 6: aplicar.**
 
-Comando: `set -a; source .env; set +a; uv run python scripts/executar_sql.py src/governanca/00_catalogo_e_schemas.sql`
-Esperado: 10 comandos executados, e o último lista os 6 schemas mais `information_schema`.
+Comando: `set -a; source .env; set +a; uv run python scripts/executar_sql.py src/governanca/01_schemas_e_volumes.sql`
+Esperado: 9 comandos executados, e o último lista os 6 schemas mais `information_schema`.
 
-Se o `CREATE CATALOG` falhar por falta de storage root, crie pelo FEVM (skill `fe-ai-tools:fevm`) um catálogo standalone chamado `sinistros_clima`, registre o ocorrido como D-016 em `docs/decisoes-e-tradeoffs.md` e rode o arquivo de novo.
+Em um workspace com permissão de CREATE CATALOG, rode antes `00_catalogo_opcional.sql`. No FEVM, use o catálogo criado com o workspace (D-016).
 
 - [ ] **Passo 7: commit.**
 
 ```bash
-git add scripts/executar_sql.py src/governanca/00_catalogo_e_schemas.sql testes/test_executar_sql.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: executor de SQL e criação do catálogo sinistros_clima
+git add pyproject.toml src/ambiente scripts/executar_sql.py src/governanca testes/test_config_ambiente.py testes/test_executar_sql.py
+git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: nomes de catálogo e schemas parametrizados, executor de SQL e criação dos schemas
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -394,9 +407,9 @@ from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
 
+from ambiente import Ambiente, carregar_ambiente
 from executar_sql import executar
 
-VOLUME_VERIFICACAO = "/Volumes/sinistros_clima/landing/arquivos/_verificacao"
 ICONES = {"ok": "✅", "parcial": "⚠️", "indisponivel": "❌"}
 RECURSOS_DAB = ["pipelines", "jobs", "apps", "model_serving_endpoints", "experiments", "registered_models",
                 "postgres_projects", "postgres_synced_tables", "synced_database_tables", "database_instances",
@@ -431,8 +444,8 @@ def checar_modelos(w) -> Verificacao:
     return Verificacao("Modelo fundacional Claude Sonnet (parecer)", "ok" if nomes else "indisponivel", ", ".join(nomes) or "nenhum endpoint")
 
 
-def checar_ai_parse_document(w, wh) -> Verificacao:
-    caminho = f"{VOLUME_VERIFICACAO}/teste.pdf"
+def checar_ai_parse_document(w, wh, amb: Ambiente) -> Verificacao:
+    caminho = f"{amb.volume_arquivos}/_verificacao/teste.pdf"
     w.files.upload(caminho, io.BytesIO(_pdf_teste()), overwrite=True)
     try:
         _, linhas = executar(w, wh, f"SELECT CAST(ai_parse_document(content) AS STRING) FROM READ_FILES('{caminho}', format => 'binaryFile')")
@@ -442,9 +455,9 @@ def checar_ai_parse_document(w, wh) -> Verificacao:
         return Verificacao("ai_parse_document", "indisponivel", str(e).splitlines()[0][:200])
 
 
-def checar_abac(w, wh) -> Verificacao:
+def checar_abac(w, wh, amb: Ambiente) -> Verificacao:
     try:
-        executar(w, wh, "SHOW POLICIES ON SCHEMA sinistros_clima.landing")
+        executar(w, wh, f"SHOW POLICIES ON SCHEMA {amb.catalogo}.{amb.schema('landing')}")
         return Verificacao("Políticas ABAC", "ok", "SHOW POLICIES executou")
     except RuntimeError as e:
         return Verificacao("Políticas ABAC", "indisponivel", str(e).splitlines()[0][:200])
@@ -477,8 +490,9 @@ def checar_warehouse(w, wh) -> Verificacao:
 def main() -> None:
     w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "fe-bar"))
     wh = os.environ["FE_BAR_WAREHOUSE_ID"]
-    verificacoes = [checar_warehouse(w, wh), checar_modelos(w), checar_ai_parse_document(w, wh),
-                    checar_abac(w, wh), checar_lakebase(w), checar_dab()]
+    amb = carregar_ambiente()
+    verificacoes = [checar_warehouse(w, wh), checar_modelos(w), checar_ai_parse_document(w, wh, amb),
+                    checar_abac(w, wh, amb), checar_lakebase(w), checar_dab()]
     md = renderizar_markdown(verificacoes, datetime.now().strftime("%Y-%m-%d %H:%M"))
     destino = Path("evidencias/00a-verificacoes-ambiente.md")
     destino.parent.mkdir(exist_ok=True)
@@ -523,7 +537,7 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 - Criar: `databricks.yml`, `recursos/README.md`
 
 **Interfaces:**
-- Produz: o bundle `sinistros_clima`, com o target `dev` e as variáveis `catalogo` e `warehouse_id`, que os recursos das fases seguintes usam.
+- Produz: o bundle `sinistros_clima`, com o target `dev` e as variáveis `catalogo`, `prefixo_schema` e `warehouse_id`, que os recursos das fases seguintes usam (nenhum recurso cita nome de catálogo ou schema fixo; D-016).
 
 - [ ] **Passo 1: criar o `databricks.yml`:**
 
@@ -538,6 +552,9 @@ variables:
   catalogo:
     description: Catálogo do Unity Catalog do projeto
     default: sinistros_clima
+  prefixo_schema:
+    description: Prefixo opcional dos schemas (vazio = sem prefixo)
+    default: ""
   warehouse_id:
     description: ID do SQL Warehouse serverless
 
@@ -547,6 +564,8 @@ targets:
     workspace:
       profile: fe-bar
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalogo: fe_bar_sinistros_catalog  # catálogo criado pelo FEVM (D-016)
 ```
 
 - [ ] **Passo 2: criar o `recursos/README.md`:**
@@ -2409,6 +2428,8 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 
 ### Tarefa 1.9: Orquestração da geração (arquivos, lotes, PDFs, resumo, amostras)
 
+> **Revisão final (D-018):** o código abaixo é a versão original do plano. A versão final em `src/dados_sinteticos/gerar.py` usa uma pasta por entidade no landing, separa o rótulo do histórico em `restrito/gabarito_historico_2025.csv` e recusa apagar uma saída com lotes já publicados (`--forcar`). A tarefa 1.10 passou a guardar o estado por destino e por geração.
+
 **Arquivos:**
 - Criar: `src/dados_sinteticos/gerar.py`, `testes/test_gerar.py`
 - Gerados: `_saida/` (fora do git), `dados/amostras/amostra_avisos.md` e `evidencias/00b-geracao-dados.md` (versionados)
@@ -2421,12 +2442,11 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
   - `renderizar_resumo_md(resumo: dict) -> str`;
   - CLI: `uv run python -m dados_sinteticos.gerar --saida _saida --escala 1.0`.
 - **Layout de `saida`:**
-  - `landing/apolices/{segurados,apolices,apolices_coberturas,corretores}.csv`
-  - `landing/referencias/{precos_referencia,prestadores,municipios_sc,estacoes_inmet_sc,defesa_civil_sc_2026}.csv`
-  - `landing/clima/inmet_sc_horario_{2025,2026}.csv` (quando `brutos_dir` é informado)
-  - `landing/historico/{historico_sinistros_2025,historico_itens_2025}.csv`
+  - **Revisão final (D-018): uma pasta por entidade**, cada uma com um único schema: `landing/<entidade>/<entidade>.csv` para `segurados`, `apolices`, `apolices_coberturas`, `corretores`, `precos_referencia`, `prestadores`, `municipios_sc`, `estacoes_inmet_sc` e `defesa_civil_sc_2026`
+  - `landing/clima_horario/inmet_sc_horario_{2025,2026}.csv` (quando `brutos_dir` é informado)
+  - `landing/historico_sinistros/historico_sinistros_2025.csv` (sem `padrao` nem `motivo_decisao`) e `landing/historico_itens/historico_itens_2025.csv`
   - `_staging/lote_XX/avisos/avisos_lote_XX.jsonl` e `_staging/lote_XX/documentos/*.pdf`
-  - `restrito/{gabarito_evento_2026,gabarito_itens_evento_2026}.csv`
+  - `restrito/{gabarito_evento_2026,gabarito_itens_evento_2026,gabarito_historico_2025}.csv`
   - `resumo_geracao.json`
 
 - [ ] **Passo 1: escrever o teste que falha** (`testes/test_gerar.py`):
@@ -2719,7 +2739,7 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 **Interfaces:**
 - Produz:
   - `publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path) -> list[str]`. Envia, para cada lote, primeiro os documentos e depois os avisos. Os caminhos relativos no destino são `documentos/<arquivo>` e `avisos/<arquivo>`. O estado fica em JSON (`{"publicados": ["lote_01", ...]}`);
-  - CLI: `uv run python scripts/simular_evento.py --lotes N [--destino volume|local:<dir>]`. O destino `volume` usa `/Volumes/sinistros_clima/landing/arquivos/`.
+  - CLI: `uv run python scripts/simular_evento.py --lotes N [--destino volume|local:<dir>]`. O destino `volume` usa `ambiente.carregar_ambiente().volume_arquivos`.
 
 - [ ] **Passo 1: escrever os testes que falham** (`testes/test_simular_evento.py`):
 
@@ -2779,8 +2799,9 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
+from ambiente import carregar_ambiente
+
 RAIZ = Path(__file__).resolve().parents[1]
-VOLUME = "/Volumes/sinistros_clima/landing/arquivos"
 
 
 def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path) -> list[str]:
@@ -2804,13 +2825,13 @@ def enviar_local(destino: Path) -> Callable[[Path, str], None]:
     return _enviar
 
 
-def enviar_volume() -> Callable[[Path, str], None]:
+def enviar_volume(volume: str) -> Callable[[Path, str], None]:
     from databricks.sdk import WorkspaceClient
     w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "fe-bar"))
 
     def _enviar(origem: Path, relativo: str) -> None:
         with open(origem, "rb") as f:
-            w.files.upload(f"{VOLUME}/{relativo}", f, overwrite=True)
+            w.files.upload(f"{volume}/{relativo}", f, overwrite=True)
     return _enviar
 
 
@@ -2821,7 +2842,7 @@ def main() -> None:
     p.add_argument("--destino", default="volume", help="'volume' ou 'local:<diretório>'")
     args = p.parse_args()
     staging = RAIZ / args.saida / "_staging"
-    enviar = enviar_volume() if args.destino == "volume" else enviar_local(Path(args.destino.split(":", 1)[1]))
+    enviar = enviar_volume(carregar_ambiente().volume_arquivos) if args.destino == "volume" else enviar_local(Path(args.destino.split(":", 1)[1]))
     publicar_lotes(staging, args.lotes, enviar, staging / "publicados.json")
 
 
@@ -2869,21 +2890,24 @@ Esperado:
 - [ ] **Passo 3: enviar a base ao Volume.** Os lotes do evento **não** vão agora: eles são publicados na fase 2, por `simular_evento.py`.
 
 ```bash
-for pasta in apolices referencias clima historico; do
-  databricks fs cp -r _saida/landing/$pasta dbfs:/Volumes/sinistros_clima/landing/arquivos/$pasta --overwrite -p fe-bar
+set -a; source .env; set +a
+ARQUIVOS="/Volumes/${FE_BAR_CATALOGO}/${FE_BAR_PREFIXO_SCHEMA}landing/arquivos"
+RESTRITO="/Volumes/${FE_BAR_CATALOGO}/${FE_BAR_PREFIXO_SCHEMA}ml/restrito"
+for pasta in _saida/landing/*/; do  # uma pasta por entidade (D-018)
+  databricks fs cp -r "$pasta" "dbfs:$ARQUIVOS/$(basename "$pasta")" --overwrite -p fe-bar
 done
-databricks fs cp -r _saida/restrito dbfs:/Volumes/sinistros_clima/ml/restrito/gabarito --overwrite -p fe-bar
-databricks fs ls dbfs:/Volumes/sinistros_clima/landing/arquivos -p fe-bar
+databricks fs cp -r _saida/restrito dbfs:$RESTRITO/gabarito --overwrite -p fe-bar
+databricks fs ls dbfs:$ARQUIVOS -p fe-bar
 ```
 
-Esperado: `apolices/`, `clima/`, `historico/`, `referencias/` e `_verificacao/`.
+Esperado: as 13 pastas de entidade (`apolices/`, `apolices_coberturas/`, `clima_horario/`, `corretores/`, `defesa_civil_sc_2026/`, `estacoes_inmet_sc/`, `historico_itens/`, `historico_sinistros/`, `municipios_sc/`, `precos_referencia/`, `prestadores/`, `segurados/`) e `_verificacao/`.
 
 - [ ] **Passo 4: conferir pelo SQL** (sanidade de leitura no warehouse). Criar `src/governanca/90_conferir_volume.sql`:
 
 ```sql
-SELECT 'apolices' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/sinistros_clima/landing/arquivos/apolices/apolices.csv', format => 'csv', header => true);
-SELECT 'historico' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/sinistros_clima/landing/arquivos/historico/historico_sinistros_2025.csv', format => 'csv', header => true);
-SELECT 'clima_2026' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/sinistros_clima/landing/arquivos/clima/inmet_sc_horario_2026.csv', format => 'csv', header => true);
+SELECT 'apolices' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/apolices/', format => 'csv', header => true);
+SELECT 'historico' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/historico_sinistros/', format => 'csv', header => true);
+SELECT 'clima_2026' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/clima_horario/inmet_sc_horario_2026.csv', format => 'csv', header => true);
 ```
 
 Comando: `set -a; source .env; set +a; uv run python scripts/executar_sql.py src/governanca/90_conferir_volume.sql`
