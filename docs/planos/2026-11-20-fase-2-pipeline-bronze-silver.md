@@ -313,6 +313,12 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 
 ### Tarefa 2.3: Pipeline Lakeflow (bronze e silver) no bundle
 
+> **Revisão na execução (ledger e D-019):** o código abaixo é a versão do plano. A versão final:
+> - instala as regras como wheel do Volume `ml/artefatos` (`scripts/publicar_pacote.py`, variável `pacote_python`), com `root_path: ../src/pipeline` e `development: true`, porque o serverless do pipeline não lê os arquivos do workspace fora das fontes;
+> - lê o `ai_extract` 2.1 por `$.campo.value`;
+> - faz o cast de `parsed:document:elements` e `error_status` para `ARRAY<VARIANT>`;
+> - em `calcular_evidencia_grupo`, usa só `lat_estacao` e `lon_estacao` como coordenadas da estação.
+
 **Arquivos:**
 - Criar: `src/pipeline/bronze.py`, `src/pipeline/silver_avisos.sql`, `src/pipeline/silver_documentos.sql`, `src/pipeline/silver_cadastros.sql`, `src/pipeline/silver_clima.py`, `src/pipeline/silver_sinistros.sql`
 - Criar: `recursos/pipeline_sinistros.yml`, `testes/test_pipeline_sql.py`

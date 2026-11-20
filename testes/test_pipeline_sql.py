@@ -25,7 +25,10 @@ def test_configuracao_do_pipeline_tem_todas_as_chaves():
     yml = RECURSO.read_text(encoding="utf-8")
     for chave in CHAVES:
         assert re.search(rf"^\s+{chave}: ", yml, re.M), chave
-    assert "--editable ${workspace.file_path}" in yml
+    # As regras chegam como wheel do Volume (o serverless do pipeline não lê arquivos do workspace fora das fontes; D-019)
+    assert "- --no-deps ${var.pacote_python}" in yml
+    assert re.search(r"^\s+root_path: \.\./src/pipeline$", yml, re.M) and "development: true" in yml
+    assert "--editable" not in yml and "/teste/" not in yml
 
 
 def test_sql_usa_so_chaves_da_configuracao():

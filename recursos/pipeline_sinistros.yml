@@ -7,14 +7,17 @@ resources:
       schema: ${var.prefixo_schema}bronze
       serverless: true
       continuous: false
+      development: true  # sem retentativas automáticas e com início mais rápido; não muda nomes
       channel: CURRENT
       root_path: ../src/pipeline
       libraries:
         - glob:
             include: ../src/pipeline/**
+      # As regras (ambiente, regras) chegam como wheel num Volume do UC: o compute serverless do pipeline não lê os
+      # arquivos do workspace fora das fontes do pipeline (EIO). --no-deps: pandas e numpy já estão no ambiente (D-019).
       environment:
         dependencies:
-          - --editable ${workspace.file_path}
+          - --no-deps ${var.pacote_python}  # publicado por scripts/publicar_pacote.py
       configuration:
         catalogo: ${var.catalogo}
         schema_bronze: ${var.prefixo_schema}bronze

@@ -23,8 +23,9 @@ def calcular_evidencia_grupo(grupo: pd.DataFrame) -> pd.DataFrame:
     """
     a = grupo.iloc[0]
     janela = grupo[grupo["codigo_estacao"].notna()]
-    estacoes = (janela.drop_duplicates("codigo_estacao")
-                .rename(columns={"lat_estacao": "lat", "lon_estacao": "lon"})[["codigo_estacao", "lat", "lon"]])
+    # O grupo também traz lat/lon do aviso: as coordenadas da estação são só lat_estacao/lon_estacao.
+    estacoes = (janela[["codigo_estacao", "lat_estacao", "lon_estacao"]].drop_duplicates("codigo_estacao")
+                .rename(columns={"lat_estacao": "lat", "lon_estacao": "lon"}))
     janela = janela[["codigo_estacao", "data", *COLUNAS_CLIMA]]
     lat, lon = float(a["lat"]), float(a["lon"])
     ev = evidencia_inmet(lat, lon, a["causa_declarada"], janela, estacoes)

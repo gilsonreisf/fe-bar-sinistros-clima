@@ -6,8 +6,9 @@ AS SELECT
   regexp_extract(_arquivo, '(AV-[0-9]{4}-[0-9]{6})_', 1) AS id_aviso,
   regexp_extract(_arquivo, '_(orcamento|laudo)[.]pdf$', 1) AS tipo_documento,
   _arquivo,
-  concat_ws('\n', transform(parsed:document:elements, e -> e:content::STRING)) AS texto,
-  parsed:error_status::STRING AS erro_leitura,
+  concat_ws('\n', transform(try_cast(parsed:document:elements AS ARRAY<VARIANT>), e -> e:content::STRING)) AS texto,
+  -- error_status é uma lista por página; vazia (ou ausente) significa leitura sem erro
+  CASE WHEN size(try_cast(parsed:error_status AS ARRAY<VARIANT>)) > 0 THEN parsed:error_status::STRING END AS erro_leitura,
   _ingerido_em
 FROM (
   SELECT _arquivo, _ingerido_em,
@@ -19,12 +20,17 @@ CREATE OR REFRESH STREAMING TABLE ${catalogo}.${schema_silver}.documentos_extrai
 COMMENT 'Campos estruturados de orçamentos e laudos (ai_extract): prestador, itens, valores e menção a dano anterior.'
 AS SELECT
   id_aviso, tipo_documento, _arquivo, legivel,
-  extraido:response:nome_prestador::STRING AS nome_prestador,
-  extraido:response:cnpj_prestador::STRING AS cnpj_prestador,
-  extraido:response:valor_total::DOUBLE AS valor_total,
-  extraido:response:menciona_dano_anterior::BOOLEAN AS menciona_dano_anterior,
-  try_variant_get(extraido, '$.response.itens',
-    'ARRAY<STRUCT<descricao: STRING, quantidade: DOUBLE, unidade: STRING, valor_unitario: DOUBLE, valor_total: DOUBLE>>') AS itens,
+  -- ai_extract 2.1 devolve cada valor como {"value": ...}; try_variant_get deixa nulo o que faltar, sem derrubar o stream
+  try_variant_get(extraido, '$.response.nome_prestador.value', 'STRING') AS nome_prestador,
+  try_variant_get(extraido, '$.response.cnpj_prestador.value', 'STRING') AS cnpj_prestador,
+  try_variant_get(extraido, '$.response.valor_total.value', 'DOUBLE') AS valor_total,
+  try_variant_get(extraido, '$.response.menciona_dano_anterior.value', 'BOOLEAN') AS menciona_dano_anterior,
+  transform(try_cast(extraido:response:itens AS ARRAY<VARIANT>), i -> named_struct(
+    'descricao', try_variant_get(i, '$.descricao.value', 'STRING'),
+    'quantidade', try_variant_get(i, '$.quantidade.value', 'DOUBLE'),
+    'unidade', try_variant_get(i, '$.unidade.value', 'STRING'),
+    'valor_unitario', try_variant_get(i, '$.valor_unitario.value', 'DOUBLE'),
+    'valor_total', try_variant_get(i, '$.valor_total.value', 'DOUBLE'))) AS itens,
   extraido:error_message::STRING AS erro_extracao,
   _ingerido_em
 FROM (
@@ -33,7 +39,7 @@ FROM (
       texto,
       '{"nome_prestador": {"type": "string"}, "cnpj_prestador": {"type": "string"}, "valor_total": {"type": "number"}, "menciona_dano_anterior": {"type": "boolean"}, "itens": {"type": "array", "items": {"type": "object", "properties": {"descricao": {"type": "string"}, "quantidade": {"type": "number"}, "unidade": {"type": "string"}, "valor_unitario": {"type": "number"}, "valor_total": {"type": "number"}}}}}',
       map('version', '2.1', 'instructions',
-        'Documentos de sinistro residencial no Brasil: orçamentos de reparo e laudos de vistoria, em português. Valores em reais no formato brasileiro: R$ 1.925,00 significa 1925.00. Em orçamentos, itens traz uma linha por item, com a descrição copiada exatamente como está no documento, incluindo o texto entre parênteses. valor_total é o total do orçamento. Em laudos, não há itens nem valor_total, e menciona_dano_anterior é true somente se o texto indicar dano anterior ao evento.')
+        'Documentos de sinistro residencial no Brasil: orçamentos de reparo e laudos de vistoria, em português. Valores em reais no formato brasileiro: R$ 1.925,00 significa 1925.00. Em orçamentos, itens traz uma linha por item. A descrição é o nome do item ou serviço copiado exatamente como está no documento, incluindo o texto entre parênteses, mas sem a quantidade e sem a unidade (em 95 m de Reparo de fiação elétrica (padrão economico), a descrição é Reparo de fiação elétrica (padrão economico), a quantidade é 95 e a unidade é m). valor_total é o total do orçamento. Em laudos, não há itens nem valor_total, e menciona_dano_anterior é true somente se o texto indicar dano anterior ao evento.')
     ) END AS extraido
   FROM (
     SELECT *, (erro_leitura IS NULL AND length(trim(texto)) > 20) AS legivel

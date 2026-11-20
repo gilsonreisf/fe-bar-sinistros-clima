@@ -13,6 +13,8 @@ variables:
     default: ""
   warehouse_id:
     description: ID do SQL Warehouse serverless
+  pacote_python:
+    description: Caminho do wheel do projeto no Volume de artefatos (saída de scripts/publicar_pacote.py)
 
 targets:
   dev:

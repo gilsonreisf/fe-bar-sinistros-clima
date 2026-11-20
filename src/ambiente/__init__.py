@@ -37,6 +37,11 @@ class Ambiente:
     def volume_restrito(self) -> str:
         return f"/Volumes/{self.catalogo}/{self.schema('ml')}/restrito"
 
+    @property
+    def volume_artefatos(self) -> str:
+        """Pacotes Python do projeto (wheel) instalados no pipeline e nos jobs serverless (D-019)."""
+        return f"/Volumes/{self.catalogo}/{self.schema('ml')}/artefatos"
+
     def variaveis_sql(self) -> dict[str, str]:
         """Valores dos placeholders ${...} usados nos arquivos .sql do projeto."""
         return {"catalogo": self.catalogo, **{f"schema_{c}": self.schema(c) for c in CAMADAS}}
