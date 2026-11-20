@@ -266,3 +266,35 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Publicação dos lotes:** o estado fica num arquivo por destino e guarda a impressão digital da geração. Publicar uma geração diferente no mesmo destino é recusado, e o gerador se recusa a apagar uma saída que já tem lotes publicados (opção `--forcar`).
 
 **Motivo:** a spec é a autoridade. Corrigir antes do upload evita reenviar tudo e reiniciar os checkpoints do pipeline nas fases seguintes.
+
+## D-019: Desenho do pipeline bronze e silver (fase 2)
+
+**Data:** 2026-11-20
+
+**Contexto:** a spec 5 descreve a silver com `ai_parse_document` seguido de `ai_query` e um conjunto mínimo de tabelas. Na implementação surgiram escolhas de função, de granularidade das tabelas e de onde as regras de negócio rodam.
+
+**Escolhas:**
+- **`ai_extract` (v2.1) em vez de `ai_query` para extrair os documentos.** É a função específica para extração estruturada: não exige escolher endpoint, aceita schema com itens aninhados e recebe instruções em português (formato "R$ 1.925,00", descrição copiada como está no documento). O `ai_query` fica reservado para o parecer (fase 4), que precisa de um modelo e de um prompt versionados.
+- **Tabelas silver adicionais:**
+  - `documentos_texto` separa o OCR da extração, para reprocessar só a extração quando as instruções mudarem;
+  - `documentos_resumo` concentra os itens casados com a tabela de preços e o desvio;
+  - `evidencia_climatica` isola a regra de duas fontes;
+  - `clima_estacao_dia` substitui `clima_municipio_dia`, porque a evidência usa a estação válida mais próxima **do local do sinistro**, por variável, e não um clima por município.
+- **Regras Python reaproveitadas no pipeline:**
+  - a agregação diária do INMET e a evidência climática rodam com `applyInPandas` chamando `src/regras`, as mesmas funções do gerador;
+  - as regras chegam ao pipeline como **wheel do projeto num Volume do UC** (`ml/artefatos/<hash>/`, publicado por `scripts/publicar_pacote.py`), instalado com `--no-deps`, porque pandas e numpy já estão no ambiente. Duas tentativas falharam antes:
+    - `--editable` do projeto inteiro;
+    - `root_path` em `src/`.
+    As duas falharam pelo mesmo motivo: o compute serverless do pipeline não lê os arquivos do workspace fora das próprias fontes (`EIO`). O hash no caminho impede que um wheel antigo seja reaproveitado;
+  - o pipeline roda com `development: true`: sem a cadeia de retentativas automáticas e com início mais rápido (não muda nomes);
+  - um teste de paridade confere, aviso a aviso, que a evidência no formato do pipeline é idêntica à do gabarito.
+- **Nada é descartado:** as expectations só medem (warn), e as violações viram `alertas_qualidade` e `flags_documento` no sinistro, que vai ao regulador (spec 10.3).
+- **Só o lote 1 nesta fase (D-017):** 800 avisos e 951 PDFs, com o custo medido antes dos demais lotes. Os lotes 2 a 10 chegam na fase 5, pelo `job_evento` disparado por chegada de arquivo, que é a demonstração do pico do evento.
+
+**Resultado no lote 1 (`evidencias/01-ingestao.md`):**
+- a evidência climática bateu com o gabarito nos 800 avisos;
+- o total do orçamento extraído pela IA bateu em 100% dos avisos, e 99,1% dos itens casaram com a tabela de preços;
+- o orçamento inflado aparece com desvio médio de +82% (todos sinalizados), contra +2% nos legítimos;
+- os 9 laudos de dano preexistente foram detectados.
+
+**Motivo:** menor custo e reprocessamento seletivo, uma única implementação das regras (sem divergência entre gerador e pipeline) e fidelidade à regra da spec de que toda falha vai para o regulador.
