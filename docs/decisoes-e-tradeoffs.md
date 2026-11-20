@@ -200,3 +200,19 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - É o fluxo realista: a seguradora treina com o passado e aplica no evento novo.
 - Evita vazamento de rótulo.
 - Aproveita os dados do INMET de 2025, que já foram baixados e analisados.
+
+## D-015: Ocorrências da Defesa Civil como peso geográfico e como segunda fonte de evidência climática
+
+**Data:** 2026-11-20
+
+**Contexto:** a busca na web (agora funcionando) trouxe os balanços da Defesa Civil de SC para dois episódios: de 28/08 a 01/09, com Florianópolis (3.749 moradias) e Biguaçu (~3.255), e de 27 a 29/09, com o Oeste e o Meio-Oeste, incluindo Seara (1.344). A estação do INMET de **Florianópolis não tem dados** no período. Com o INMET como única fonte, a cidade mais atingida ficaria inteira com evidência "fraca", e a meta de ~30% de fast track se tornaria inviável.
+
+**Alternativas consideradas:**
+- Usar só o INMET e aceitar uma taxa baixa de fast track. Isso distorce o caso de negócio.
+- Interpolar o clima entre estações distantes. A interpolação é pouco confiável para um fenômeno local como o granizo e é difícil de explicar ao segurado.
+
+**Escolha:**
+- **(1) Pesos geográficos:** os avisos legítimos sintéticos seguem a geografia e as datas reais dos episódios, em proporção às moradias atingidas.
+- **(2) Segunda fonte de evidência:** a evidência climática é `forte` quando o INMET (a até 30 km, com sinal) **ou** a Defesa Civil (ocorrência no município dentro da janela) confirmam o evento. Cada sinistro registra a fonte que confirmou.
+
+**Motivo:** é o que as seguradoras fazem na prática, aceitando o decreto ou registro da Defesa Civil como prova do evento. O caso fica fiel aos dados públicos reais e a solução fica mais justa com o segurado. Os dados curados, com as fontes, estão em `docs/dados/defesa-civil-sc-2026.md`.

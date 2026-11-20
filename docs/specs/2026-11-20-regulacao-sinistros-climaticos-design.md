@@ -3,7 +3,7 @@
 **Data:** 2026-11-20
 **Status:** em revisão pelo autor
 **Contexto:** protótipo para o FE Bar. Todo o conteúdo é em português, e nenhum cliente específico é citado.
-**Decisões relacionadas:** D-001 a D-014 em `docs/decisoes-e-tradeoffs.md`.
+**Decisões relacionadas:** D-001 a D-015 em `docs/decisoes-e-tradeoffs.md`.
 
 ---
 
@@ -81,6 +81,7 @@ Um único lineage no UC vai do JSON bruto até a decisão.
   - `2025.zip`: é o **histórico** usado para treinar o modelo.
   - A cobertura é parcial (veja `docs/dados/inmet-cobertura-sc.md`). O INMET não mede granizo.
 - **IBGE:** municípios de SC, com código, nome e coordenadas.
+- **Defesa Civil de SC:** ocorrências por município e por episódio, com moradias atingidas, curadas a partir dos boletins oficiais e da imprensa, com a fonte registrada em cada linha (veja `docs/dados/defesa-civil-sc-2026.md`). Os dados são usados de duas formas: como peso geográfico e temporal dos avisos sintéticos e como segunda fonte de evidência climática (D-015).
 
 ### 4.2 Dados sintéticos
 O gerador usa Faker pt_BR e reportlab, com seed fixa.
@@ -95,9 +96,13 @@ O gerador usa Faker pt_BR e reportlab, com seed fixa.
 | **Avisos do evento (2026)** | ~8 mil, em ~10 lotes | Em JSON, com descrição em texto livre |
 | PDFs do evento | 1 orçamento por aviso, mais laudo quando o valor reclamado passa de R$ 20 mil | Texto em formato livre e realista |
 
-**Clima real guiando os dados sintéticos:**
-- Os avisos legítimos são gerados preferencialmente nos municípios e datas em que o INMET registrou sinal severo.
-- O padrão "sem evento climático" é gerado em datas e locais sem sinal.
+**Geografia e datas reais guiando os dados sintéticos (D-015):**
+- **Episódio 1, de 28/08 a 01/09/2026:** Grande Florianópolis (Florianópolis e Biguaçu) e Oeste (Ipuaçu, São José do Cedro, Bom Jesus e outros).
+- **Episódio 2, de 27 a 29/09/2026:** Oeste e Meio-Oeste (Seara, Ponte Serrada, Santiago do Sul, Anita Garibaldi e outros).
+- **Distribuição dos avisos legítimos:** ~90% vão para os municípios com registro da Defesa Civil, em proporção às moradias atingidas. Os municípios sem número publicado recebem um peso mínimo (equivalente a 20 moradias). As datas de ocorrência caem dentro de cada episódio.
+- **Os ~10% restantes:** ocorrências menores espalhadas por agosto e setembro (Bela Vista do Toldo, Capinzal e outras), nas datas em que o INMET registrou sinal.
+- **Padrão "sem evento climático":** gerado em municípios e datas **sem** registro da Defesa Civil **e** sem sinal do INMET.
+- **Carteira de apólices:** distribuída pelos municípios de SC de forma proporcional à população (premissa nossa), para que a exposição seja realista.
 
 **Distribuição de padrões**, igual no histórico e no evento:
 
@@ -120,10 +125,11 @@ O gerador usa Faker pt_BR e reportlab, com seed fixa.
   - chuva ≥ 10 mm/h;
   - rajada ≥ 15 m/s;
   - queda de temperatura ≥ 4 °C em até 2 horas.
-- **Força da evidência climática** na janela de D−1 a D+1 da data de ocorrência:
-  - `forte`: estação válida a até 30 km com sinal compatível com a causa declarada;
-  - `fraca`: estação a mais de 30 km ou variável ausente;
-  - `contraria`: estação válida a até 30 km sem nenhum sinal.
+- **Força da evidência climática** na janela de D−1 a D+1 da data de ocorrência, combinando **duas fontes** (D-015):
+  - `forte`: há uma estação do INMET válida a até 30 km com sinal compatível com a causa declarada, **ou** há registro de ocorrência da Defesa Civil no município dentro da janela;
+  - `fraca`: nenhuma das duas fontes confirma o evento, e falta dado (estação a mais de 30 km ou variável ausente);
+  - `contraria`: há uma estação válida a até 30 km sem nenhum sinal **e** não há registro da Defesa Civil.
+- **Fonte registrada:** cada sinistro guarda qual fonte confirmou o evento (`inmet`, `defesa_civil` ou `ambas`), para auditoria e para o parecer.
 - **Evidência fraca nunca leva à recusa.** O caso vai para o regulador.
 
 ### 4.4 Modelo de dados
@@ -132,7 +138,7 @@ Catálogo `sinistros_clima`.
 | Schema | Objetos |
 |---|---|
 | `landing` | Volume `arquivos` com `avisos/`, `documentos/`, `apolices/`, `clima/`, `referencias/` |
-| `bronze` | `avisos`, `apolices`, `segurados`, `corretores`, `documentos` (binário), `clima_inmet`, `municipios`, `precos_referencia`, `historico_sinistros` |
+| `bronze` | `avisos`, `apolices`, `segurados`, `corretores`, `documentos` (binário), `clima_inmet`, `municipios`, `ocorrencias_defesa_civil`, `precos_referencia`, `historico_sinistros` |
 | `silver` | `avisos`, `apolices_coberturas`, `documentos_extraidos`, `clima_municipio_dia`, `sinistros_enriquecidos` |
 | `gold` | `sinistros_analisados`, `fila_regulacao`, `sinistro_detalhe`, `kpis_evento`, `decisoes_regulador`, `acuracia_ia`, `mv_sinistros`, `mv_exposicao` |
 | `ml` | `gabarito`, `features_treino`, `avaliacao_parecer_dataset`, o modelo `modelo_suspeita`, o modelo `parecer_sinistro` e o prompt `prompt_parecer` |
@@ -140,7 +146,7 @@ Catálogo `sinistros_clima`.
 
 **Campos-chave:**
 - **Aviso:** `id_aviso`, `id_apolice`, `cpf_segurado`, `data_ocorrencia`, `data_aviso`, `causa_declarada`, `descricao`, `valor_reclamado`, `canal`, `municipio`, `lat`, `lon`, `documentos[]`.
-- **Sinistro enriquecido:** os campos do aviso mais `cobertura_valida`, `lmi`, `franquia`, `dias_desde_contratacao`, `forca_evidencia_climatica`, `distancia_estacao_km`, `chuva_mm`, `rajada_max_ms`, `granizo_provavel`, `desvio_preco_pct`, `qtd_orcamentos_prestador`, `flags_documento[]`.
+- **Sinistro enriquecido:** os campos do aviso mais `cobertura_valida`, `lmi`, `franquia`, `dias_desde_contratacao`, `forca_evidencia_climatica`, `fonte_evidencia`, `distancia_estacao_km`, `chuva_mm`, `rajada_max_ms`, `granizo_provavel`, `desvio_preco_pct`, `qtd_orcamentos_prestador`, `flags_documento[]`.
 - **Sinistro analisado:** os campos anteriores mais `score_suspeita`, `versao_modelo`, `recomendacao_ia`, `valor_sugerido`, `motivos[]`, `clausulas[]`, `confianca`, `versao_prompt`, `trace_id`, `status_parecer`, `prioridade`, `fast_track`.
 
 ## 5. Pipeline Lakeflow (SDP, serverless)
@@ -321,7 +327,7 @@ Cada item tem uma regra de decisão definida. O resultado é registrado em `docs
 
 | Domínio | Critério |
 |---|---|
-| **Industry** | O problema é de cliente, específico de seguros patrimoniais, com KPIs do comprador quantificados e dados climáticos reais do INMET |
+| **Industry** | O problema é de cliente, específico de seguros patrimoniais, com KPIs do comprador quantificados, dados climáticos reais do INMET e ocorrências reais da Defesa Civil |
 | **Product** | As seis camadas estão presentes e **conectadas** por um lineage único no UC; cada produto é usado no papel certo (Lakebase para OLTP, SQL Warehouse para análise, Genie sobre metric views) |
 | **Build + AI Mindset** | Tudo foi executado com evidência em texto (`evidencias/` e notebooks com saída); modelo e prompt são versionados, avaliados e rastreáveis por `trace_id`; existe um laço de retorno; `docs/uso-de-ia.md` documenta como a IA foi usada no build |
 | **Customer Skills** | O README e o deck abrem pelo problema e pelo valor; o roteiro tell-show-tell está em `docs/roteiro-demo.md`; as objeções das duas personas foram preparadas |

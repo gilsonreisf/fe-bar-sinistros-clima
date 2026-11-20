@@ -9,8 +9,8 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | Etapa | Situação |
 |---|---|
 | Caso de uso e problema de negócio | ✅ Definido |
-| Desenho da solução (spec) | 🔄 Escrita, em revisão (`docs/specs/`) |
-| Plano de implementação | ⏳ Pendente |
+| Desenho da solução (spec) | ✅ Aprovada (`docs/specs/`) |
+| Plano de implementação | 🔄 Em andamento |
 | Build (Lakeflow → UC → Lakebase → ML/GenAI → Genie → App) | ⏳ Pendente |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
