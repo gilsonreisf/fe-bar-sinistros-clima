@@ -1,7 +1,7 @@
 """Simula a chegada do pico do evento: publica os próximos lotes de avisos e documentos no Volume.
 
 Uso:
-  uv run python scripts/simular_evento.py --lotes 1                 # publica no Volume do UC
+  uv run python scripts/simular_evento.py --lotes 1                 # publica no Volume do UC (módulo `ambiente`)
   uv run python scripts/simular_evento.py --lotes 1 --destino local:/tmp/volume
 O estado (lotes já publicados) fica em _saida/_staging/publicados.json.
 """
@@ -14,8 +14,9 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
+from ambiente import carregar_ambiente
+
 RAIZ = Path(__file__).resolve().parents[1]
-VOLUME = "/Volumes/sinistros_clima/landing/arquivos"
 
 
 def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path) -> list[str]:
@@ -39,13 +40,13 @@ def enviar_local(destino: Path) -> Callable[[Path, str], None]:
     return _enviar
 
 
-def enviar_volume() -> Callable[[Path, str], None]:
+def enviar_volume(volume: str) -> Callable[[Path, str], None]:
     from databricks.sdk import WorkspaceClient
     w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "fe-bar"))
 
     def _enviar(origem: Path, relativo: str) -> None:
         with open(origem, "rb") as f:
-            w.files.upload(f"{VOLUME}/{relativo}", f, overwrite=True)
+            w.files.upload(f"{volume}/{relativo}", f, overwrite=True)
     return _enviar
 
 
@@ -56,7 +57,7 @@ def main() -> None:
     p.add_argument("--destino", default="volume", help="'volume' ou 'local:<diretório>'")
     args = p.parse_args()
     staging = RAIZ / args.saida / "_staging"
-    enviar = enviar_volume() if args.destino == "volume" else enviar_local(Path(args.destino.split(":", 1)[1]))
+    enviar = enviar_volume(carregar_ambiente().volume_arquivos) if args.destino == "volume" else enviar_local(Path(args.destino.split(":", 1)[1]))
     publicar_lotes(staging, args.lotes, enviar, staging / "publicados.json")
 
 

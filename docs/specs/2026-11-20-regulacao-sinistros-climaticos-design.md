@@ -133,7 +133,7 @@ O gerador usa Faker pt_BR e reportlab, com seed fixa.
 - **Evidência fraca nunca leva à recusa.** O caso vai para o regulador.
 
 ### 4.4 Modelo de dados
-Catálogo `sinistros_clima`.
+Catálogo configurável: `FE_BAR_CATALOGO`, com padrão `sinistros_clima` (no FEVM, `fe_bar_sinistros_catalog`). Os schemas abaixo aceitam um prefixo opcional (`FE_BAR_PREFIXO_SCHEMA`, padrão vazio). Nenhum nome fica fixo no código (D-016).
 
 | Schema | Objetos |
 |---|---|
@@ -223,7 +223,7 @@ Catálogo `sinistros_clima`.
 - **`operacao.atribuicoes`:** quando o regulador assume um sinistro, o app usa `SELECT … FOR UPDATE SKIP LOCKED`, de modo que dois reguladores nunca peguem o mesmo caso.
 - **`operacao.decisoes_regulador`:** recebe **apenas inserções**. Os campos são `id_decisao` (UUID gerado no cliente, com restrição de unicidade), `id_aviso`, `regulador`, `decisao`, `valor_aprovado`, `motivo`, `concordou_com_ia`, `versao_modelo`, `versao_prompt`, `trace_id` e `criado_em`.
 - **`operacao.reanalises`:** o resultado de cada "Reanalisar com IA", com `trace_id`.
-- **Volta ao lakehouse:** o Lakehouse Sync (Beta) leva o schema `operacao` para `sinistros_clima.operacional`, como histórico SCD2. **Plano B**, se o recurso não estiver disponível: um job agendado lê o Lakebase e grava em Delta.
+- **Volta ao lakehouse:** o Lakehouse Sync (Beta) leva o schema `operacao` para `<catálogo>.operacional`, como histórico SCD2. **Plano B**, se o recurso não estiver disponível: um job agendado lê o Lakebase e grava em Delta.
 
 ### 7.2 App (AppKit, React + TypeScript)
 

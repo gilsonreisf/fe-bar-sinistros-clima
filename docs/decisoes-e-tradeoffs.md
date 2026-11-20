@@ -216,3 +216,21 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **(2) Segunda fonte de evidência:** a evidência climática é `forte` quando o INMET (a até 30 km, com sinal) **ou** a Defesa Civil (ocorrência no município dentro da janela) confirmam o evento. Cada sinistro registra a fonte que confirmou.
 
 **Motivo:** é o que as seguradoras fazem na prática, aceitando o decreto ou registro da Defesa Civil como prova do evento. O caso fica fiel aos dados públicos reais e a solução fica mais justa com o segurado. Os dados curados, com as fontes, estão em `docs/dados/defesa-civil-sc-2026.md`.
+
+## D-016: Nomes de catálogo e schemas parametrizados (sem nome fixo no código)
+
+**Data:** 2026-11-20
+
+**Contexto:** no workspace FEVM, o `CREATE CATALOG` falhou: o usuário não tem essa permissão no metastore compartilhado. O FEVM já cria, junto com o workspace, o catálogo `fe_bar_sinistros_catalog`, em que o usuário tem ALL_PRIVILEGES. O plano previa o nome fixo `sinistros_clima` em scripts, SQL, caminhos de Volume e bundle.
+
+**Alternativas consideradas:**
+- Criar pelo FEVM um catálogo standalone `sinistros_clima` (TTL de 90 dias). Isso mantém o nome, mas cria mais um recurso para gerenciar e continua amarrando o código a um nome.
+- Trocar o nome fixo por `fe_bar_sinistros_catalog`. Funciona só neste workspace e o asset deixa de ser reutilizável.
+
+**Escolha:** usar o catálogo do FEVM e **parametrizar** os nomes:
+- `FE_BAR_CATALOGO` define o catálogo (padrão `sinistros_clima`; no FEVM, `fe_bar_sinistros_catalog`);
+- `FE_BAR_PREFIXO_SCHEMA` é um prefixo opcional dos schemas (padrão vazio), para várias instalações no mesmo catálogo;
+- o módulo `src/ambiente` é a fonte única dos nomes em Python; os `.sql` usam os placeholders `${catalogo}` e `${schema_<camada>}`, preenchidos pelo `executar_sql.py`, que falha se faltar valor; o bundle usa as variáveis `catalogo` e `prefixo_schema` (o target `dev` define o catálogo do FEVM);
+- o `CREATE CATALOG` ficou em `src/governanca/00_catalogo_opcional.sql`, para workspaces em que há permissão.
+
+**Motivo:** o asset fica reutilizável em qualquer workspace ou cliente só com a troca do `.env` e das variáveis do bundle. Um teste garante que nenhum `.sql` do projeto tenha placeholder sem valor ou nome do FEVM fixo.

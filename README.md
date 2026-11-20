@@ -19,7 +19,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 ## Ambiente
 
 - Workspace: FEVM serverless (AWS us-west-2), acessado pelo profile `fe-bar` da Databricks CLI.
-- Variáveis locais: copie `.env.exemplo` para `.env` e preencha o ID do SQL Warehouse.
+- Variáveis locais: copie `.env.exemplo` para `.env` e preencha o ID do SQL Warehouse, o catálogo (`FE_BAR_CATALOGO`) e, se quiser, o prefixo dos schemas (`FE_BAR_PREFIXO_SCHEMA`). Nenhum nome de catálogo ou schema fica fixo no código (D-016).
 
 ## Estrutura do repositório
 
