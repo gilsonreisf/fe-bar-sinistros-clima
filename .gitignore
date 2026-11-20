@@ -19,3 +19,10 @@ dist/
 
 # Sistema operacional
 .DS_Store
+
+# Saídas locais do gerador e dados públicos brutos (grandes)
+_saida/
+dados/brutos/
+
+# Rascunhos locais do executor de planos
+.superpowers/
