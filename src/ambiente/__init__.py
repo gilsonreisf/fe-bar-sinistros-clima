@@ -50,3 +50,32 @@ def carregar_ambiente(env: Mapping[str, str] = os.environ) -> Ambiente:
     if not _PREFIXO.fullmatch(prefixo):
         raise ValueError(f"FE_BAR_PREFIXO_SCHEMA inválido: {prefixo!r} (use letras minúsculas, dígitos e _)")
     return Ambiente(catalogo=catalogo, prefixo_schema=prefixo)
+
+
+# Contrato do landing: pasta do Volume (uma entidade por pasta; D-018) → (tabela bronze, formato do Auto Loader).
+PASTAS_LANDING: dict[str, tuple[str, str]] = {
+    "avisos": ("avisos", "json"),
+    "documentos": ("documentos", "binaryFile"),
+    "apolices": ("apolices", "csv"),
+    "apolices_coberturas": ("apolices_coberturas", "csv"),
+    "segurados": ("segurados", "csv"),
+    "corretores": ("corretores", "csv"),
+    "prestadores": ("prestadores", "csv"),
+    "precos_referencia": ("precos_referencia", "csv"),
+    "municipios_sc": ("municipios", "csv"),
+    "estacoes_inmet_sc": ("estacoes_inmet", "csv"),
+    "defesa_civil_sc_2026": ("ocorrencias_defesa_civil", "csv"),
+    "clima_horario": ("clima_inmet", "csv"),
+    "historico_sinistros": ("historico_sinistros", "csv"),
+    "historico_itens": ("historico_itens", "csv"),
+}
+
+# Esquema explícito dos avisos (JSON): a pasta pode estar vazia antes do primeiro lote, e a inferência falharia.
+ESQUEMA_AVISOS = ("id_aviso STRING, id_apolice STRING, cpf_segurado STRING, data_ocorrencia STRING, data_aviso STRING, "
+                  "causa_declarada STRING, descricao STRING, valor_reclamado DOUBLE, canal STRING, codigo_ibge INT, "
+                  "municipio STRING, lat DOUBLE, lon DOUBLE, id_prestador STRING, documentos ARRAY<STRING>")
+
+
+def nomes_do_esquema(ddl: str) -> list[str]:
+    """Nomes das colunas de um DDL simples do Spark ('a STRING, b ARRAY<STRING>')."""
+    return [parte.split()[0] for parte in ddl.split(", ")]

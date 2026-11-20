@@ -77,3 +77,22 @@ def test_gerar_recusa_apagar_saida_ja_publicada(tmp_path):
     with pytest.raises(RuntimeError, match="publicad"):
         gerar(tmp_path / "nao_usado", None, saida, v, seed=1)
     assert (saida / "_staging" / "publicados_volume.json").exists()
+
+
+def test_layout_bate_com_o_contrato_do_landing(tmp_path, mundo, monkeypatch):
+    """Foco de revisão 5: toda pasta do landing tem tabela bronze, e o JSON dos avisos segue o esquema do bronze."""
+    import dados_sinteticos.config as config
+    from ambiente import ESQUEMA_AVISOS, PASTAS_LANDING, nomes_do_esquema
+
+    monkeypatch.setattr(config, "JANELA_EVENTO_2026", mundo[0].janela)
+    monkeypatch.setattr(config, "JANELA_HISTORICO_2025", tuple(d.replace(year=2025) for d in mundo[0].janela))
+    publicos = tmp_path / "publicos"
+    _publicos_minimos(publicos, mundo)
+    v = Volumes(corretores=5, prestadores=50, segurados=200, apolices=230, historico=60, evento=40, lotes=2)
+    gerar(publicos, None, tmp_path / "saida", v, seed=5)
+    s = tmp_path / "saida"
+    pastas = {p.name for p in (s / "landing").iterdir()} | {"avisos", "documentos"}
+    assert pastas - {"clima_horario"} == set(PASTAS_LANDING) - {"clima_horario"}  # sem brutos_dir não há clima horário
+    assert "clima_horario" in PASTAS_LANDING
+    aviso = json.loads((s / "_staging/lote_01/avisos/avisos_lote_01.jsonl").read_text().splitlines()[0])
+    assert list(aviso) == nomes_do_esquema(ESQUEMA_AVISOS)
