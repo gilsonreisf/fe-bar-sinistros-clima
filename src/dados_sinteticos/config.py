@@ -50,6 +50,6 @@ FATOR_PRECO_INFLADO = (1.40, 2.20)
 # Geografia
 FRACAO_LEGITIMOS_DEFESA_CIVIL = 0.90
 PESO_MINIMO_MUNICIPIO_DC = 20
-FRACAO_CARTEIRA_UNIFORME = 0.40
+FRACAO_CARTEIRA_POPULACAO = 0.40  # parte da carteira proporcional à população; o resto é concentração regional (D-018)
 FRACAO_HISTORICO_SEM_ESTACAO = 0.20
 CANAIS = {"app": 0.50, "corretor": 0.35, "central": 0.15}

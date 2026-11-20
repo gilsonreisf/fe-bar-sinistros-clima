@@ -192,10 +192,17 @@ def sortear_local_sem_evento(ctx: ContextoGeracao, causa: str, max_tentativas: i
     raise RuntimeError(f"não foi possível sortear local sem evento para '{causa}'")
 
 
-def _sortear_local_qualquer(ctx: ContextoGeracao) -> tuple[int, date]:
-    codigo = int(ctx.municipios["codigo_ibge"].iloc[int(ctx.rng.integers(0, len(ctx.municipios)))])
-    dia = ctx._dias_com_sinal.iloc[int(ctx.rng.integers(0, len(ctx._dias_com_sinal)))]
-    return codigo, dia.data
+def sortear_local_sem_estacao(ctx: ContextoGeracao, causa: str, max_tentativas: int = 3000) -> tuple[int, date]:
+    """Local e data de um evento real (dia com sinal em alguma estação) cuja evidência no local é 'fraca':
+    sem estação válida no raio para a causa. Nunca devolve local com evidência 'contraria' (revisão #3)."""
+    rng = ctx.rng
+    for _ in range(max_tentativas):
+        codigo = int(ctx.municipios["codigo_ibge"].iloc[int(rng.integers(0, len(ctx.municipios)))])
+        dia = ctx._dias_com_sinal.iloc[int(rng.integers(0, len(ctx._dias_com_sinal)))]
+        m = ctx._mun.loc[codigo]
+        if ctx.evidencia(codigo, m.lat, m.lon, dia.data, causa)[0] == "fraca":
+            return codigo, dia.data
+    raise RuntimeError(f"não foi possível sortear local sem estação para '{causa}'")
 
 
 def _escolher_apolice(rng, candidatas, cob_por_apolice, data_oc: date, cobertura: str, quer_cobertura: bool, usadas: set):
@@ -300,7 +307,7 @@ def gerar_historico(ctx: ContextoGeracao, n: int) -> tuple[pd.DataFrame, pd.Data
         if padrao == "sem_evento_climatico":
             codigo, data_oc = sortear_local_sem_evento(ctx, causa)
         elif rng.random() < config.FRACAO_HISTORICO_SEM_ESTACAO:
-            codigo, data_oc = _sortear_local_qualquer(ctx)
+            codigo, data_oc = sortear_local_sem_estacao(ctx, causa)
         else:
             codigo, data_oc = sortear_local_legitimo(ctx, causa)
         ramo = "empresarial" if rng.random() < 0.15 else "residencial"
@@ -320,6 +327,7 @@ def gerar_historico(ctx: ContextoGeracao, n: int) -> tuple[pd.DataFrame, pd.Data
             "lmi_cobertura": lmi, "franquia": franquia, "inicio_vigencia": (data_oc - timedelta(days=dias)).isoformat(),
             "menciona_preexistente": padrao == "dano_preexistente", "decisao_final": decisao,
             "motivo_decisao": "regular" if padrao.startswith("legitimo") else padrao, "valor_pago": valor,
+            "_padrao": padrao,  # rótulo: vai só para o gabarito restrito, nunca para o landing (revisão #4)
         })
         itens_todos += [{"id_sinistro": id_sinistro, **x} for x in itens]
     return pd.DataFrame(linhas), pd.DataFrame(itens_todos)

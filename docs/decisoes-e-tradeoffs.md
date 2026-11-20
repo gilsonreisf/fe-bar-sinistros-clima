@@ -250,3 +250,19 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Lakehouse Sync:** a API de CDF está presente no SDK, e a ativação real fica para a fase 6. O plano B (job agendado de Lakebase para Delta) continua valendo.
 
 **Motivo:** aplicar as regras da spec com o que foi medido no workspace, sem supor disponibilidade.
+
+## D-018: Ajustes da revisão independente das fases 0 e 1
+
+**Data:** 2026-11-20
+
+**Contexto:** a revisão independente ao fim da fase 1, feita antes de enviar os dados ao Volume, não encontrou nada crítico e apontou seis pontos importantes. Todos mudavam o conteúdo dos dados e foram corrigidos antes do upload, cada um com um teste que falhou antes da correção.
+
+**Escolhas:**
+- **Carteira de apólices (spec 4.2):** 40% da carteira é proporcional à **população do Censo 2022** (IBGE, tabela 4709, agora em `municipios_sc.csv`). Os outros 60% refletem a concentração regional da Vértice Seguros (fictícia) nos municípios atingidos, pelo peso da Defesa Civil. *Alternativa descartada:* 100% proporcional à população. Com 8 mil avisos concentrados em poucos municípios (premissa do caso), Biguaçu, com ~76 mil habitantes, teria mais avisos do que apólices. *Trade-off:* a Vértice é uma seguradora regional forte na Grande Florianópolis e no Oeste. Joinville, Blumenau e Chapecó passam a ter carteira grande e poucos sinistros, o que deixa a análise exposição × sinistralidade realista no Genie.
+- **Regra `contraria` (spec 4.3):** `contraria` exige estação válida **sem nenhum sinal**. Sinal parcial (ex.: chuva intensa sem rajada forte num aviso de granizo) agora é **inconclusivo** e vira `fraca`, indo para o regulador.
+- **Sinal de granizo:** o "sinal compatível" é a tempestade severa no período (chuva ≥ 10 mm/h **e** rajada ≥ 15 m/s, em qualquer hora da janela). O indicador horário `granizo_provavel` (as três condições na mesma hora, com queda de temperatura) é mais estrito e fica como detalhe para o parecer, não como condição da evidência. *Motivo:* as estações ficam a dezenas de km do local, e exigir as três condições na mesma hora marcaria como sem sinal a maior parte do granizo real.
+- **Histórico 2025:** os sinistros "sem estação" (20% do histórico) agora só nascem em local e data com evidência `fraca`, nunca `contraria`. O rótulo (`padrao` e `motivo_decisao`) saiu do landing e foi para `restrito/gabarito_historico_2025.csv`. No landing ficam só a decisão final e o valor pago, como numa base real de sinistros regulados.
+- **Layout do Volume:** uma pasta por entidade (`apolices/`, `segurados/`, `apolices_coberturas/`, `historico_sinistros/`, `clima_horario/` etc.), cada uma com um único schema, para um Auto Loader por pasta (spec 5).
+- **Publicação dos lotes:** o estado fica num arquivo por destino e guarda a impressão digital da geração. Publicar uma geração diferente no mesmo destino é recusado, e o gerador se recusa a apagar uma saída que já tem lotes publicados (opção `--forcar`).
+
+**Motivo:** a spec é a autoridade. Corrigir antes do upload evita reenviar tudo e reiniciar os checkpoints do pipeline nas fases seguintes.

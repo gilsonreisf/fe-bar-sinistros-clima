@@ -1,10 +1,11 @@
-"""Baixa e prepara os dados públicos (INMET 2025/2026 de SC e municípios de SC).
+"""Baixa e prepara os dados públicos (INMET 2025/2026 de SC e municípios de SC, com a população do Censo 2022).
 
 Uso: uv run python scripts/preparar_dados_publicos.py
 Saídas versionadas em dados/publicos/; arquivos grandes em dados/brutos/ (fora do git).
 """
 from __future__ import annotations
 
+import json
 import urllib.request
 from pathlib import Path
 
@@ -17,6 +18,8 @@ BRUTOS = RAIZ / "dados/brutos"
 PUBLICOS = RAIZ / "dados/publicos"
 URL_INMET = "https://portal.inmet.gov.br/uploads/dadoshistoricos/{ano}.zip"
 URL_MUNICIPIOS = "https://raw.githubusercontent.com/kelvins/municipios-brasileiros/main/csv/municipios.csv"
+# IBGE, Censo 2022, tabela 4709 (população residente), todos os municípios de SC (N6 dentro de N3 = 42)
+URL_POPULACAO = "https://servicodados.ibge.gov.br/api/v3/agregados/4709/periodos/2022/variaveis/93?localidades=N6%5BN3%5B42%5D%5D"
 ANOS = (2025, 2026)
 
 
@@ -37,8 +40,15 @@ def main() -> None:
 
     muni = pd.read_csv(baixar(URL_MUNICIPIOS, BRUTOS / "municipios_brasil.csv"))
     sc = muni[muni["codigo_uf"] == 42].rename(columns={"nome": "municipio", "latitude": "lat", "longitude": "lon"})
-    sc[["codigo_ibge", "municipio", "lat", "lon"]].sort_values("municipio").to_csv(PUBLICOS / "municipios_sc.csv", index=False)
-    print(f"municípios de SC: {len(sc)}")
+    series = json.loads(baixar(URL_POPULACAO, BRUTOS / "populacao_sc_censo2022.json").read_text())[0]["resultados"][0]["series"]
+    pop = pd.DataFrame({"codigo_ibge": [int(s["localidade"]["id"]) for s in series],
+                        "populacao": [int(s["serie"]["2022"]) for s in series]})
+    sc = sc.merge(pop, on="codigo_ibge", how="left", validate="one_to_one")
+    if sc["populacao"].isna().any():
+        raise ValueError(f"municípios sem população no IBGE: {sc.loc[sc['populacao'].isna(), 'municipio'].tolist()}")
+    sc = sc.astype({"populacao": int})
+    sc[["codigo_ibge", "municipio", "lat", "lon", "populacao"]].sort_values("municipio").to_csv(PUBLICOS / "municipios_sc.csv", index=False)
+    print(f"municípios de SC: {len(sc)}, população total: {sc['populacao'].sum():,}")
 
     estacoes = []
     for ano in ANOS:

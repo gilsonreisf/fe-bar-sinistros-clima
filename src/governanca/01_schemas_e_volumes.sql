@@ -13,7 +13,7 @@ CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_ml}
 CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_operacional}
   COMMENT 'Histórico das tabelas operacionais do Lakebase (Lakehouse Sync).';
 CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_landing}.arquivos
-  COMMENT 'Arquivos brutos: avisos/, documentos/, apolices/, clima/, referencias/, historico/.';
+  COMMENT 'Arquivos brutos, uma pasta por entidade: avisos/, documentos/, apolices/, segurados/, clima_horario/, historico_sinistros/ etc.';
 CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_ml}.restrito
   COMMENT 'Gabarito dos dados sintéticos. Acesso restrito; nunca lido pelo pipeline de features.';
 SHOW SCHEMAS IN ${catalogo};

@@ -332,7 +332,7 @@ CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_ml}
 CREATE SCHEMA IF NOT EXISTS ${catalogo}.${schema_operacional}
   COMMENT 'Histórico das tabelas operacionais do Lakebase (Lakehouse Sync).';
 CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_landing}.arquivos
-  COMMENT 'Arquivos brutos: avisos/, documentos/, apolices/, clima/, referencias/, historico/.';
+  COMMENT 'Arquivos brutos, uma pasta por entidade: avisos/, documentos/, apolices/, segurados/, clima_horario/, historico_sinistros/ etc.';
 CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_ml}.restrito
   COMMENT 'Gabarito dos dados sintéticos. Acesso restrito; nunca lido pelo pipeline de features.';
 SHOW SCHEMAS IN ${catalogo};
@@ -2428,6 +2428,8 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
 
 ### Tarefa 1.9: Orquestração da geração (arquivos, lotes, PDFs, resumo, amostras)
 
+> **Revisão final (D-018):** o código abaixo é a versão original do plano. A versão final em `src/dados_sinteticos/gerar.py` usa uma pasta por entidade no landing, separa o rótulo do histórico em `restrito/gabarito_historico_2025.csv` e recusa apagar uma saída com lotes já publicados (`--forcar`). A tarefa 1.10 passou a guardar o estado por destino e por geração.
+
 **Arquivos:**
 - Criar: `src/dados_sinteticos/gerar.py`, `testes/test_gerar.py`
 - Gerados: `_saida/` (fora do git), `dados/amostras/amostra_avisos.md` e `evidencias/00b-geracao-dados.md` (versionados)
@@ -2440,12 +2442,11 @@ Co-authored-by: Isaac <no-reply@databricks.com>"
   - `renderizar_resumo_md(resumo: dict) -> str`;
   - CLI: `uv run python -m dados_sinteticos.gerar --saida _saida --escala 1.0`.
 - **Layout de `saida`:**
-  - `landing/apolices/{segurados,apolices,apolices_coberturas,corretores}.csv`
-  - `landing/referencias/{precos_referencia,prestadores,municipios_sc,estacoes_inmet_sc,defesa_civil_sc_2026}.csv`
-  - `landing/clima/inmet_sc_horario_{2025,2026}.csv` (quando `brutos_dir` é informado)
-  - `landing/historico/{historico_sinistros_2025,historico_itens_2025}.csv`
+  - **Revisão final (D-018): uma pasta por entidade**, cada uma com um único schema: `landing/<entidade>/<entidade>.csv` para `segurados`, `apolices`, `apolices_coberturas`, `corretores`, `precos_referencia`, `prestadores`, `municipios_sc`, `estacoes_inmet_sc` e `defesa_civil_sc_2026`
+  - `landing/clima_horario/inmet_sc_horario_{2025,2026}.csv` (quando `brutos_dir` é informado)
+  - `landing/historico_sinistros/historico_sinistros_2025.csv` (sem `padrao` nem `motivo_decisao`) e `landing/historico_itens/historico_itens_2025.csv`
   - `_staging/lote_XX/avisos/avisos_lote_XX.jsonl` e `_staging/lote_XX/documentos/*.pdf`
-  - `restrito/{gabarito_evento_2026,gabarito_itens_evento_2026}.csv`
+  - `restrito/{gabarito_evento_2026,gabarito_itens_evento_2026,gabarito_historico_2025}.csv`
   - `resumo_geracao.json`
 
 - [ ] **Passo 1: escrever o teste que falha** (`testes/test_gerar.py`):
@@ -2892,21 +2893,21 @@ Esperado:
 set -a; source .env; set +a
 ARQUIVOS="/Volumes/${FE_BAR_CATALOGO}/${FE_BAR_PREFIXO_SCHEMA}landing/arquivos"
 RESTRITO="/Volumes/${FE_BAR_CATALOGO}/${FE_BAR_PREFIXO_SCHEMA}ml/restrito"
-for pasta in apolices referencias clima historico; do
-  databricks fs cp -r _saida/landing/$pasta dbfs:$ARQUIVOS/$pasta --overwrite -p fe-bar
+for pasta in _saida/landing/*/; do  # uma pasta por entidade (D-018)
+  databricks fs cp -r "$pasta" "dbfs:$ARQUIVOS/$(basename "$pasta")" --overwrite -p fe-bar
 done
 databricks fs cp -r _saida/restrito dbfs:$RESTRITO/gabarito --overwrite -p fe-bar
 databricks fs ls dbfs:$ARQUIVOS -p fe-bar
 ```
 
-Esperado: `apolices/`, `clima/`, `historico/`, `referencias/` e `_verificacao/`.
+Esperado: as 13 pastas de entidade (`apolices/`, `apolices_coberturas/`, `clima_horario/`, `corretores/`, `defesa_civil_sc_2026/`, `estacoes_inmet_sc/`, `historico_itens/`, `historico_sinistros/`, `municipios_sc/`, `precos_referencia/`, `prestadores/`, `segurados/`) e `_verificacao/`.
 
 - [ ] **Passo 4: conferir pelo SQL** (sanidade de leitura no warehouse). Criar `src/governanca/90_conferir_volume.sql`:
 
 ```sql
-SELECT 'apolices' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/apolices/apolices.csv', format => 'csv', header => true);
-SELECT 'historico' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/historico/historico_sinistros_2025.csv', format => 'csv', header => true);
-SELECT 'clima_2026' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/clima/inmet_sc_horario_2026.csv', format => 'csv', header => true);
+SELECT 'apolices' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/apolices/', format => 'csv', header => true);
+SELECT 'historico' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/historico_sinistros/', format => 'csv', header => true);
+SELECT 'clima_2026' AS arquivo, COUNT(*) AS linhas FROM read_files('/Volumes/${catalogo}/${schema_landing}/arquivos/clima_horario/inmet_sc_horario_2026.csv', format => 'csv', header => true);
 ```
 
 Comando: `set -a; source .env; set +a; uv run python scripts/executar_sql.py src/governanca/90_conferir_volume.sql`

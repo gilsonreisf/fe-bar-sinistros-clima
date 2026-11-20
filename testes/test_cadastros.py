@@ -64,3 +64,11 @@ def test_apolice_avulsa_forca_e_exclui_coberturas(base):
     tipos = {c["cobertura"] for c in cobs}
     assert {"incendio", "alagamento"} <= tipos and "vendaval_granizo" not in tipos
     assert ap["inicio_vigencia"] == "2026-09-20" and ap["fim_vigencia"] == "2027-09-20"
+
+
+def test_pesos_carteira_usam_populacao_quando_disponivel(base):
+    """Revisão #2 (spec 4.2): a parte não concentrada da carteira segue a população do IBGE."""
+    _, _, municipios, dc = base
+    p = pesos_carteira(municipios.assign(populacao=[300, 100]), dc, 0.4)
+    assert p.loc[1] == pytest.approx(0.4 * 0.75)
+    assert p.loc[2] == pytest.approx(0.4 * 0.25 + 0.6)

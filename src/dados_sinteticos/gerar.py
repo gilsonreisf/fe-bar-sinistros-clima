@@ -1,6 +1,9 @@
 """Orquestra a geração completa dos dados sintéticos e grava o layout de saída (veja o plano, tarefa 1.9).
 
-Uso: uv run python -m dados_sinteticos.gerar --saida _saida --escala 1.0
+Uso: uv run python -m dados_sinteticos.gerar --saida _saida --escala 1.0 [--forcar]
+
+Layout do landing: uma pasta por entidade, cada uma com um único schema (um Auto Loader por pasta).
+O gabarito (rótulos do evento e do histórico) fica só em `restrito/`.
 """
 from __future__ import annotations
 
@@ -52,7 +55,16 @@ def _distribuicao(serie: pd.Series) -> dict:
     return {str(k): round(float(v), 4) for k, v in serie.value_counts(normalize=True).sort_index().items()}
 
 
-def gerar(publicos_dir: Path, brutos_dir: Path | None, saida: Path, volumes: Volumes, seed: int = config.SEED) -> dict:
+COLUNAS_ROTULO_HISTORICO = ["padrao", "motivo_decisao"]
+
+
+def gerar(publicos_dir: Path, brutos_dir: Path | None, saida: Path, volumes: Volumes, seed: int = config.SEED,
+          forcar: bool = False) -> dict:
+    publicados = sorted((saida / "_staging").glob("publicados*.json")) if saida.exists() else []
+    if publicados and not forcar:
+        raise RuntimeError(f"a saída já tem lotes publicados ({', '.join(p.name for p in publicados)}); regenerar "
+                           "quebraria a correspondência entre o gabarito e o que já foi ingerido. Use forcar=True "
+                           "(--forcar) só depois de limpar o Volume e reiniciar o pipeline.")
     if saida.exists():
         shutil.rmtree(saida)
     rng, fk = np.random.default_rng(seed), nova_faker(seed)
@@ -64,7 +76,7 @@ def gerar(publicos_dir: Path, brutos_dir: Path | None, saida: Path, volumes: Vol
     precos = gerar_tabela_precos()
     corretores = gerar_corretores(fk, volumes.corretores)
     prestadores = gerar_prestadores(fk, volumes.prestadores)
-    segurados = gerar_segurados(fk, rng, municipios, pesos_carteira(municipios, dc, config.FRACAO_CARTEIRA_UNIFORME), volumes.segurados)
+    segurados = gerar_segurados(fk, rng, municipios, pesos_carteira(municipios, dc, config.FRACAO_CARTEIRA_POPULACAO), volumes.segurados)
     apolices, coberturas = gerar_apolices(rng, segurados, corretores, volumes.apolices, *config.INICIO_VIGENCIA_CARTEIRA)
 
     ctx_hist = ContextoGeracao(rng, fk, municipios, estacoes, clima_2025, precos, prestadores, config.JANELA_HISTORICO_2025)
@@ -72,22 +84,26 @@ def gerar(publicos_dir: Path, brutos_dir: Path | None, saida: Path, volumes: Vol
     ctx_ev = ContextoGeracao(rng, fk, municipios, estacoes, clima_2026, precos, prestadores, config.JANELA_EVENTO_2026, dc)
     ev = gerar_evento(ctx_ev, segurados, apolices, coberturas, corretores, volumes.evento, volumes.lotes)
 
-    land = saida / "landing"
-    _csv(pd.concat([segurados, ev.segurados_extra], ignore_index=True), land / "apolices/segurados.csv")
+    land = saida / "landing"  # uma pasta por entidade (revisão #6)
+    _csv(pd.concat([segurados, ev.segurados_extra], ignore_index=True), land / "segurados/segurados.csv")
     _csv(pd.concat([apolices, ev.apolices_extra], ignore_index=True), land / "apolices/apolices.csv")
-    _csv(pd.concat([coberturas, ev.coberturas_extra], ignore_index=True), land / "apolices/apolices_coberturas.csv")
-    _csv(corretores, land / "apolices/corretores.csv")
-    _csv(precos, land / "referencias/precos_referencia.csv")
-    _csv(prestadores, land / "referencias/prestadores.csv")
-    for nome in ("municipios_sc.csv", "estacoes_inmet_sc.csv", "defesa_civil_sc_2026.csv"):
-        (land / "referencias").mkdir(parents=True, exist_ok=True)
-        shutil.copy(publicos_dir / nome, land / "referencias" / nome)
+    _csv(pd.concat([coberturas, ev.coberturas_extra], ignore_index=True), land / "apolices_coberturas/apolices_coberturas.csv")
+    _csv(corretores, land / "corretores/corretores.csv")
+    _csv(precos, land / "precos_referencia/precos_referencia.csv")
+    _csv(prestadores, land / "prestadores/prestadores.csv")
+    for nome in ("municipios_sc", "estacoes_inmet_sc", "defesa_civil_sc_2026"):
+        (land / nome).mkdir(parents=True, exist_ok=True)
+        shutil.copy(publicos_dir / f"{nome}.csv", land / nome / f"{nome}.csv")
     if brutos_dir is not None:
-        (land / "clima").mkdir(parents=True, exist_ok=True)
+        (land / "clima_horario").mkdir(parents=True, exist_ok=True)
         for ano in (2025, 2026):
-            shutil.copy(brutos_dir / f"inmet_sc_horario_{ano}.csv", land / "clima" / f"inmet_sc_horario_{ano}.csv")
-    _csv(historico, land / "historico/historico_sinistros_2025.csv")
-    _csv(itens_hist, land / "historico/historico_itens_2025.csv")
+            shutil.copy(brutos_dir / f"inmet_sc_horario_{ano}.csv", land / "clima_horario" / f"inmet_sc_horario_{ano}.csv")
+    historico = historico.rename(columns={"_padrao": "padrao"})
+    publicas_hist = [c for c in historico.columns if c not in COLUNAS_ROTULO_HISTORICO]  # revisão #4: sem rótulo no landing
+    _csv(historico[publicas_hist], land / "historico_sinistros/historico_sinistros_2025.csv")
+    _csv(itens_hist, land / "historico_itens/historico_itens_2025.csv")
+    _csv(historico[["id_sinistro", "padrao", "motivo_decisao", "decisao_final", "valor_pago"]],
+         saida / "restrito/gabarito_historico_2025.csv")
     _csv(ev.gabarito, saida / "restrito/gabarito_evento_2026.csv")
     _csv(ev.itens, saida / "restrito/gabarito_itens_evento_2026.csv")
 
@@ -174,9 +190,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Gera os dados sintéticos do caso")
     p.add_argument("--saida", default="_saida")
     p.add_argument("--escala", type=float, default=1.0)
+    p.add_argument("--forcar", action="store_true", help="regenera mesmo que já existam lotes publicados")
     args = p.parse_args()
     volumes = Volumes().escalar(args.escala) if args.escala != 1.0 else Volumes()
-    resumo = gerar(RAIZ / "dados/publicos", RAIZ / "dados/brutos", RAIZ / args.saida, volumes)
+    resumo = gerar(RAIZ / "dados/publicos", RAIZ / "dados/brutos", RAIZ / args.saida, volumes, forcar=args.forcar)
     amostras = resumo.pop("_amostras")
     (RAIZ / "evidencias").mkdir(exist_ok=True)
     (RAIZ / "evidencias/00b-geracao-dados.md").write_text(renderizar_resumo_md(resumo), encoding="utf-8")

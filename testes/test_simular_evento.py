@@ -1,7 +1,9 @@
 import shutil
 from pathlib import Path
 
-from simular_evento import enviar_local, publicar_lotes
+import pytest
+
+from simular_evento import arquivo_estado, enviar_local, publicar_lotes
 
 
 def _staging(tmp_path: Path) -> Path:
@@ -27,3 +29,20 @@ def test_publicacao_idempotente(tmp_path):
     assert publicar_lotes(s, 2, enviar_local(destino), estado) == ["lote_03"]
     assert publicar_lotes(s, 2, enviar_local(destino), estado) == []
     assert sorted(p.name for p in (destino / "avisos").iterdir()) == [f"avisos_lote_0{k}.jsonl" for k in (1, 2, 3)]
+
+
+def test_estado_separado_por_destino(tmp_path):
+    """Revisão #1: publicar num destino local de teste não pode marcar o lote como publicado no Volume."""
+    s = _staging(tmp_path)
+    local, volume = arquivo_estado(s, "local:/tmp/x"), arquivo_estado(s, "/Volumes/c/landing/arquivos")
+    assert local != volume
+    publicar_lotes(s, 1, lambda origem, rel: None, local, geracao="g1")
+    assert publicar_lotes(s, 10, lambda origem, rel: None, volume, geracao="g1") == ["lote_01", "lote_02", "lote_03"]
+
+
+def test_geracao_diferente_da_publicada_falha(tmp_path):
+    """Revisão #1: depois de regenerar, publicar no mesmo destino misturaria duas gerações."""
+    s, estado = _staging(tmp_path), tmp_path / "estado.json"
+    publicar_lotes(s, 1, lambda origem, rel: None, estado, geracao="g1")
+    with pytest.raises(RuntimeError, match="geração"):
+        publicar_lotes(s, 1, lambda origem, rel: None, estado, geracao="g2")

@@ -26,10 +26,17 @@ def gerar_prestadores(fk: Faker, n: int) -> pd.DataFrame:
                          for i in range(1, n + 1)])
 
 
-def pesos_carteira(municipios: pd.DataFrame, defesa_civil: pd.DataFrame, fracao_uniforme: float) -> pd.Series:
-    base = pd.Series(fracao_uniforme / len(municipios), index=municipios["codigo_ibge"].to_numpy())
+def pesos_carteira(municipios: pd.DataFrame, defesa_civil: pd.DataFrame, fracao_populacao: float) -> pd.Series:
+    """Peso de cada município na carteira (soma 1), em duas partes (D-018):
+    - `fracao_populacao`: proporcional à população do IBGE (uniforme se a coluna `populacao` não existir);
+    - o restante: concentração regional da seguradora nos municípios atingidos (peso da Defesa Civil)."""
+    if "populacao" in municipios.columns:
+        pop = municipios["populacao"].astype(float).to_numpy()
+        base = pd.Series(fracao_populacao * pop / pop.sum(), index=municipios["codigo_ibge"].to_numpy())
+    else:
+        base = pd.Series(fracao_populacao / len(municipios), index=municipios["codigo_ibge"].to_numpy())
     dc = defesa_civil.groupby("codigo_ibge")["peso"].sum()
-    dc = dc / dc.sum() * (1 - fracao_uniforme)
+    dc = dc / dc.sum() * (1 - fracao_populacao)
     return base.add(dc, fill_value=0.0)
 
 

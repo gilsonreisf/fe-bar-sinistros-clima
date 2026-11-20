@@ -12,7 +12,8 @@ from regras.clima import JANELA_DIAS
 
 def carregar_municipios_sc(caminho: Path) -> pd.DataFrame:
     df = pd.read_csv(caminho)
-    return df[["codigo_ibge", "municipio", "lat", "lon"]].astype({"codigo_ibge": int})
+    colunas = ["codigo_ibge", "municipio", "lat", "lon"] + (["populacao"] if "populacao" in df.columns else [])
+    return df[colunas].astype({"codigo_ibge": int})
 
 
 def carregar_estacoes(caminho: Path) -> pd.DataFrame:

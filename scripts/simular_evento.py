@@ -3,13 +3,16 @@
 Uso:
   uv run python scripts/simular_evento.py --lotes 1                 # publica no Volume do UC (módulo `ambiente`)
   uv run python scripts/simular_evento.py --lotes 1 --destino local:/tmp/volume
-O estado (lotes já publicados) fica em _saida/_staging/publicados.json.
+O estado (lotes já publicados) fica em _saida/_staging/publicados_<destino>.json, um arquivo por destino, e
+guarda a impressão digital da geração: publicar uma geração nova no mesmo destino é recusado.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Callable
@@ -19,15 +22,30 @@ from ambiente import carregar_ambiente
 RAIZ = Path(__file__).resolve().parents[1]
 
 
-def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path) -> list[str]:
-    publicados = json.loads(estado.read_text())["publicados"] if estado.exists() else []
+def arquivo_estado(staging: Path, destino: str) -> Path:
+    """Um arquivo de estado por destino: publicar num diretório local de teste não afeta o Volume."""
+    return staging / f"publicados_{re.sub(r'[^a-z0-9]+', '_', destino.lower()).strip('_')}.json"
+
+
+def impressao_geracao(saida: Path) -> str:
+    """Identifica a geração pelo hash do resumo (seed, volumes e distribuições)."""
+    return hashlib.sha256((saida / "resumo_geracao.json").read_bytes()).hexdigest()[:16]
+
+
+def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path,
+                   geracao: str | None = None) -> list[str]:
+    anterior = json.loads(estado.read_text()) if estado.exists() else {}
+    if geracao and anterior.get("geracao") and anterior["geracao"] != geracao:
+        raise RuntimeError(f"a geração mudou desde a última publicação neste destino ({anterior['geracao']} → {geracao}); "
+                           "limpe o destino e o estado antes de publicar a geração nova")
+    publicados = anterior.get("publicados", [])
     pendentes = [p for p in sorted(staging.glob("lote_*")) if p.is_dir() and p.name not in publicados][:quantidade]
     for lote in pendentes:
         for pasta in ("documentos", "avisos"):  # documentos primeiro: quando o aviso chega, o PDF já existe
             for arquivo in sorted((lote / pasta).iterdir()):
                 enviar(arquivo, f"{pasta}/{arquivo.name}")
         publicados.append(lote.name)
-        estado.write_text(json.dumps({"publicados": publicados}, indent=2))
+        estado.write_text(json.dumps({"geracao": geracao or anterior.get("geracao"), "publicados": publicados}, indent=2))
         print(f"publicado: {lote.name}")
     return [p.name for p in pendentes]
 
@@ -57,8 +75,13 @@ def main() -> None:
     p.add_argument("--destino", default="volume", help="'volume' ou 'local:<diretório>'")
     args = p.parse_args()
     staging = RAIZ / args.saida / "_staging"
-    enviar = enviar_volume(carregar_ambiente().volume_arquivos) if args.destino == "volume" else enviar_local(Path(args.destino.split(":", 1)[1]))
-    publicar_lotes(staging, args.lotes, enviar, staging / "publicados.json")
+    if args.destino == "volume":
+        destino = carregar_ambiente().volume_arquivos
+        enviar = enviar_volume(destino)
+    else:
+        destino = str(Path(args.destino.split(":", 1)[1]).resolve())
+        enviar = enviar_local(Path(destino))
+    publicar_lotes(staging, args.lotes, enviar, arquivo_estado(staging, destino), impressao_geracao(RAIZ / args.saida))
 
 
 if __name__ == "__main__":

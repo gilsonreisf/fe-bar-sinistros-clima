@@ -18,7 +18,9 @@ def test_haversine_florianopolis_chapeco_aprox_405km():
     ("vendaval", {"rajada_max_ms": 9.0}, False),
     ("vendaval", {"rajada_max_ms": None}, None),
     ("granizo", {"chuva_max_hora_mm": 12.0, "rajada_max_ms": 15.0}, True),
-    ("granizo", {"chuva_max_hora_mm": 12.0, "rajada_max_ms": 10.0}, False),
+    ("granizo", {"chuva_max_hora_mm": 12.0, "rajada_max_ms": 10.0}, None),  # sinal parcial: inconclusivo (revisão #5)
+    ("granizo", {"chuva_max_hora_mm": 1.0, "rajada_max_ms": 16.0}, None),
+    ("granizo", {"chuva_max_hora_mm": 1.0, "rajada_max_ms": 5.0}, False),
     ("granizo", {"chuva_max_hora_mm": 12.0, "rajada_max_ms": None}, None),
     ("alagamento", {"chuva_mm": 55.0}, True),
     ("alagamento", {"chuva_mm": 20.0}, False),
@@ -90,3 +92,11 @@ def test_janela_inclui_d_menos_1_e_d_mais_1(estacoes):
     assert ev["valores"]["rajada_max_ms"] == 18.0
     assert ev["sinal"] is True
     assert ev["distancia_km"] < 30
+
+
+def test_sinal_parcial_e_fraca_nao_contraria(estacoes):
+    """Revisão #5 (spec 4.3): 'contraria' exige estação válida SEM NENHUM sinal; sinal parcial vira 'fraca'."""
+    clima = _clima([{"codigo_estacao": "A001", "data": date(2026, 9, 28), "chuva_max_hora_mm": 14.0, "rajada_max_ms": 9.0}])
+    janela = janela_clima(indexar_clima_por_data(clima), date(2026, 9, 28))
+    ev = evidencia_inmet(-27.05, -52.0, "granizo", janela, estacoes)
+    assert classificar_evidencia(ev["sinal"], ev["distancia_km"], False) == ("fraca", "nenhuma")

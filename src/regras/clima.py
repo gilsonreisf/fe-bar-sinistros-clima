@@ -36,7 +36,11 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def sinal_por_causa(causa: str, valores: dict[str, float | None]) -> bool | None:
-    """True: há sinal compatível com a causa. False: há dado e não há sinal. None: falta dado."""
+    """True: há sinal compatível com a causa. False: há dado e nenhum sinal. None: falta dado ou o sinal é parcial.
+
+    Sinal parcial (só parte das variáveis da causa acima do limiar) é inconclusivo, nunca contrário: a spec 4.3 só
+    admite 'contraria' quando a estação válida não mostra nenhum sinal.
+    """
     chuva_dia = valores.get("chuva_mm")
     chuva_hora = valores.get("chuva_max_hora_mm")
     rajada = valores.get("rajada_max_ms")
@@ -45,10 +49,14 @@ def sinal_por_causa(causa: str, valores: dict[str, float | None]) -> bool | None
     if causa == "alagamento":
         return None if not _tem(chuva_dia) else bool(chuva_dia >= LIMIAR_CHUVA_DIA_ALAGAMENTO_MM)
     if causa == "granizo":
-        # O INMET não mede granizo: usamos tempestade severa (chuva intensa e rajada forte) como indicador.
+        # O INMET não mede granizo: o sinal compatível é tempestade severa (chuva intensa e rajada forte no período).
+        # O indicador horário `granizo_provavel` (com queda de temperatura) é mais estrito e fica como detalhe (D-018).
         if not (_tem(chuva_hora) and _tem(rajada)):
             return None
-        return bool(chuva_hora >= LIMIAR_CHUVA_HORA_MM and rajada >= LIMIAR_RAJADA_MS)
+        acima = (chuva_hora >= LIMIAR_CHUVA_HORA_MM, rajada >= LIMIAR_RAJADA_MS)
+        if all(acima):
+            return True
+        return None if any(acima) else False
     if causa == "danos_eletricos":
         medidos = [(v, lim) for v, lim in ((chuva_hora, LIMIAR_CHUVA_HORA_MM), (rajada, LIMIAR_RAJADA_MS)) if _tem(v)]
         if any(v >= lim for v, lim in medidos):

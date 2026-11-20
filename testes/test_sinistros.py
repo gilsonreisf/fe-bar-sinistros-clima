@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import date
+from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
@@ -107,3 +107,34 @@ def test_historico_tem_rotulos_e_snapshot_da_apolice(mundo):
     assert (hist.loc[hist["motivo_decisao"] == "sem_cobertura", "cobertura_contratada"] == False).all()  # noqa: E712
     assert (hist.loc[hist["motivo_decisao"] == "regular", "cobertura_contratada"] == True).all()  # noqa: E712
     assert set(itens["id_sinistro"]) <= set(hist["id_sinistro"])
+
+
+def test_historico_regular_nunca_tem_evidencia_contraria():
+    """Revisão #3: sinistro legítimo pago não pode nascer em local e data com evidência climática contrária."""
+    from dados_sinteticos.cadastros import gerar_prestadores, nova_faker
+    from dados_sinteticos.sinistros import ContextoGeracao
+
+    municipios = pd.DataFrame({"codigo_ibge": [1, 2, 3], "municipio": ["PERTO_S", "PERTO_T", "LONGE"],
+                               "lat": [-27.05, -26.05, -29.5], "lon": [-52.0, -50.0, -52.0]})
+    estacoes = pd.DataFrame([{"codigo_estacao": "S", "nome": "S", "uf": "SC", "lat": -27.0, "lon": -52.0},
+                             {"codigo_estacao": "T", "nome": "T", "uf": "SC", "lat": -26.0, "lon": -50.0}])
+    linhas = []
+    for k in range(31):
+        d = date(2025, 8, 1) + timedelta(days=k)
+        for est in ("S", "T"):  # só S tem sinal (10 a 12/08); T nunca tem
+            severo = est == "S" and date(2025, 8, 10) <= d <= date(2025, 8, 12)
+            linhas.append({"codigo_estacao": est, "data": d, "horas_chuva": 24, "chuva_mm": 80.0 if severo else 2.0,
+                           "chuva_max_hora_mm": 15.0 if severo else 0.5, "horas_rajada": 24,
+                           "rajada_max_ms": 20.0 if severo else 6.0, "queda_temp_max_c": 5.0 if severo else 1.0,
+                           "granizo_provavel": severo})
+    clima = pd.DataFrame(linhas)
+    clima["granizo_provavel"] = clima["granizo_provavel"].astype("boolean")
+    fk = nova_faker(11)
+    ctx = ContextoGeracao(rng=np.random.default_rng(11), fk=fk, municipios=municipios, estacoes=estacoes,
+                          clima_diario=clima, precos=gerar_tabela_precos(), prestadores=gerar_prestadores(fk, 20),
+                          janela=(date(2025, 8, 1), date(2025, 8, 31)))
+    hist, _ = gerar_historico(ctx, 300)
+    regulares = hist[hist["motivo_decisao"] == "regular"]
+    forcas = [ctx.evidencia(r.codigo_ibge, r.lat, r.lon, date.fromisoformat(r.data_ocorrencia), r.causa_declarada)[0]
+              for r in regulares.itertuples()]
+    assert len(forcas) > 100 and "contraria" not in forcas

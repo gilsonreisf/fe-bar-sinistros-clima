@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from dados_sinteticos.publicos import carregar_defesa_civil, registro_defesa_civil
+from dados_sinteticos.publicos import carregar_defesa_civil, carregar_municipios_sc, registro_defesa_civil
 
 RAIZ = Path(__file__).resolve().parents[1]
 
@@ -36,3 +36,15 @@ def test_registro_considera_janela_de_um_dia(municipios):
     assert registro_defesa_civil(dc, seara, date(2026, 9, 30))      # D+1 do fim
     assert not registro_defesa_civil(dc, seara, date(2026, 9, 25))
     assert not registro_defesa_civil(dc, seara, date(2026, 8, 29))  # Seara não está no episódio 1
+
+
+def test_municipios_preservam_populacao(tmp_path):
+    caminho = tmp_path / "m.csv"
+    pd.DataFrame({"codigo_ibge": [1], "municipio": ["A"], "lat": [-27.0], "lon": [-50.0], "populacao": [1234]}).to_csv(caminho, index=False)
+    assert carregar_municipios_sc(caminho).loc[0, "populacao"] == 1234
+
+
+def test_municipios_publicos_tem_populacao_do_censo():
+    m = carregar_municipios_sc(RAIZ / "dados/publicos/municipios_sc.csv")
+    assert len(m) == 295 and (m["populacao"] > 0).all()
+    assert m["populacao"].sum() == 7_610_361  # Censo 2022, SC
