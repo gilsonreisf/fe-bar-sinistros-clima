@@ -10,11 +10,16 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 |---|---|
 | Caso de uso e problema de negócio | ✅ Definido |
 | Desenho da solução (spec) | ✅ Aprovada (`docs/specs/`) |
-| Plano de implementação | 🔄 Roadmap + fases 0 e 1 detalhadas, em revisão (`docs/planos/`) |
+| Plano de implementação | ✅ Roadmap + fases 0 e 1 aprovados, em execução (`docs/planos/`) |
 | Build (Lakeflow → UC → Lakebase → ML/GenAI → Genie → App) | ⏳ Pendente |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
 | Ensaio do roleplay | ⏳ Pendente |
+
+## Ambiente
+
+- Workspace: FEVM serverless (AWS us-west-2), acessado pelo profile `fe-bar` da Databricks CLI.
+- Variáveis locais: copie `.env.exemplo` para `.env` e preencha o ID do SQL Warehouse.
 
 ## Estrutura do repositório
 
