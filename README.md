@@ -10,7 +10,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 |---|---|
 | Caso de uso e problema de negócio | ✅ Definido |
 | Desenho da solução (spec) | ✅ Aprovada (`docs/specs/`) |
-| Plano de implementação | 🔄 Em andamento |
+| Plano de implementação | 🔄 Roadmap + fases 0 e 1 detalhadas, em revisão (`docs/planos/`) |
 | Build (Lakeflow → UC → Lakebase → ML/GenAI → Genie → App) | ⏳ Pendente |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
@@ -23,6 +23,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | `docs/negocio/` | Problema de negócio, ganhos, KPIs e personas |
 | `docs/dados/` | Análises das fontes de dados públicas (ex.: cobertura do INMET) |
 | `docs/specs/` | Especificação de design da solução |
+| `docs/planos/` | Roadmap e planos de implementação por fase |
 | `docs/decisoes-e-tradeoffs.md` | Registro das decisões tomadas e alternativas descartadas |
 | `scripts/exploracao/` | Scripts de exploração das fontes de dados |
 | `_interno/` | Material de apoio local, **não versionado** (veja `.gitignore`) |
