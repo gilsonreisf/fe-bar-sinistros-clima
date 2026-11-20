@@ -4,9 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dados_sinteticos.cadastros import gerar_corretores, gerar_prestadores, nova_faker
+from dados_sinteticos.cadastros import (
+    gerar_apolices, gerar_corretores, gerar_prestadores, gerar_segurados, nova_faker, pesos_carteira,
+)
 from dados_sinteticos.precos import gerar_tabela_precos
-from dados_sinteticos.sinistros import ContextoGeracao
+from dados_sinteticos.sinistros import ContextoGeracao, gerar_evento
 
 
 @pytest.fixture
@@ -33,3 +35,12 @@ def mundo():
                           clima_diario=clima, precos=gerar_tabela_precos(), prestadores=gerar_prestadores(fk, 50),
                           janela=(date(2026, 8, 1), date(2026, 8, 31)), defesa_civil=dc)
     return ctx, gerar_corretores(fk, 5)
+
+
+@pytest.fixture
+def evento(mundo):
+    ctx, corretores = mundo
+    pesos = pesos_carteira(ctx.municipios, ctx.defesa_civil, 0.4)
+    seg = gerar_segurados(ctx.fk, ctx.rng, ctx.municipios, pesos, 300)
+    ap, cob = gerar_apolices(ctx.rng, seg, corretores, 350, date(2025, 10, 1), date(2026, 7, 31))
+    return gerar_evento(ctx, seg, ap, cob, corretores, n=200, n_lotes=4), ap, cob

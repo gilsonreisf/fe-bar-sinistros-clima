@@ -40,15 +40,6 @@ def test_gabarito_limita_ao_lmi():
     assert (d, valor) == ("pagar_parcial", 50_000.0)
 
 
-@pytest.fixture
-def evento(mundo):
-    ctx, corretores = mundo
-    pesos = pesos_carteira(ctx.municipios, ctx.defesa_civil, 0.4)
-    seg = gerar_segurados(ctx.fk, ctx.rng, ctx.municipios, pesos, 300)
-    ap, cob = gerar_apolices(ctx.rng, seg, corretores, 350, date(2025, 10, 1), date(2026, 7, 31))
-    return gerar_evento(ctx, seg, ap, cob, corretores, n=200, n_lotes=4), ap, cob
-
-
 def test_evento_volumes_lotes_e_ids(evento):
     r, _, _ = evento
     assert len(r.avisos) == 200 and r.avisos["id_aviso"].is_unique
