@@ -1,0 +1,21 @@
+# Material interno de apoio (instruções do FE Bar etc.): não publicar
+_interno/
+
+# Configuração local de ferramentas
+.claude/settings.local.json
+.databricks/
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+
+# Node / front-end
+node_modules/
+dist/
+
+# Sistema operacional
+.DS_Store
