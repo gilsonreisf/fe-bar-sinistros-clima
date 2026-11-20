@@ -2,6 +2,7 @@
 -- (streaming). Documento ilegível vira flag, não erro (spec 10.3).
 CREATE OR REFRESH STREAMING TABLE ${catalogo}.${schema_silver}.documentos_texto
 COMMENT 'Texto de cada PDF do aviso, extraído com ai_parse_document (sem descrições de imagem, para reduzir custo).'
+TBLPROPERTIES ('pipelines.reset.allowed' = 'false')  -- full refresh acidental não refaz o OCR de todos os PDFs
 AS SELECT
   regexp_extract(_arquivo, '(AV-[0-9]{4}-[0-9]{6})_', 1) AS id_aviso,
   regexp_extract(_arquivo, '_(orcamento|laudo)[.]pdf$', 1) AS tipo_documento,
@@ -18,6 +19,7 @@ FROM (
 
 CREATE OR REFRESH STREAMING TABLE ${catalogo}.${schema_silver}.documentos_extraidos
 COMMENT 'Campos estruturados de orçamentos e laudos (ai_extract): prestador, itens, valores e menção a dano anterior.'
+TBLPROPERTIES ('pipelines.reset.allowed' = 'false')  -- idem: a extração por IA de cada PDF é feita uma única vez
 AS SELECT
   id_aviso, tipo_documento, _arquivo, legivel,
   -- ai_extract 2.1 devolve cada valor como {"value": ...}; try_variant_get deixa nulo o que faltar, sem derrubar o stream
@@ -54,7 +56,10 @@ AS WITH docs AS (
     max(CASE WHEN tipo_documento = 'orcamento' AND legivel THEN 1 ELSE 0 END) AS tem_orcamento,
     max(CASE WHEN NOT legivel THEN 1 ELSE 0 END) AS tem_ilegivel,
     max(CASE WHEN tipo_documento = 'laudo' AND legivel AND menciona_dano_anterior THEN 1 ELSE 0 END) AS laudo_dano_anterior,
-    max(CASE WHEN tipo_documento = 'orcamento' AND legivel THEN valor_total END) AS valor_orcamento
+    max(CASE WHEN tipo_documento = 'orcamento' AND legivel THEN valor_total END) AS valor_orcamento,
+    max(CASE WHEN tipo_documento = 'orcamento' AND legivel AND (erro_extracao IS NOT NULL OR valor_total IS NULL)
+        THEN 1 ELSE 0 END) AS extracao_falhou,
+    count(*) AS docs_recebidos
   FROM ${catalogo}.${schema_silver}.documentos_extraidos
   GROUP BY id_aviso
 ),
@@ -78,7 +83,7 @@ casados AS (
   LEFT JOIN precos p ON p.chave = lower(regexp_replace(trim(it.descricao), '\\s+', ' '))
   GROUP BY it.id_aviso
 )
-SELECT d.id_aviso, d.tem_orcamento, d.tem_ilegivel, d.laudo_dano_anterior, d.valor_orcamento,
+SELECT d.id_aviso, d.tem_orcamento, d.tem_ilegivel, d.laudo_dano_anterior, d.valor_orcamento, d.extracao_falhou, d.docs_recebidos,
   coalesce(c.itens_extraidos, 0) AS itens_extraidos, coalesce(c.itens_casados, 0) AS itens_casados,
   round(c.valor_casado / c.valor_referencia - 1, 4) AS desvio_preco_pct
 FROM docs d

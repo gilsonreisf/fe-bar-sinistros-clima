@@ -3,8 +3,8 @@
 CREATE OR REFRESH MATERIALIZED VIEW ${catalogo}.${schema_silver}.sinistros_enriquecidos (
   CONSTRAINT apolice_existente EXPECT (apolice_existe),
   CONSTRAINT ocorrencia_na_vigencia EXPECT (dentro_vigencia),
-  CONSTRAINT datas_coerentes EXPECT (data_ocorrencia <= data_aviso),
-  CONSTRAINT valor_positivo EXPECT (valor_reclamado > 0),
+  CONSTRAINT datas_coerentes EXPECT (coalesce(data_ocorrencia <= data_aviso, false)),
+  CONSTRAINT valor_positivo EXPECT (coalesce(valor_reclamado > 0, false)),
   CONSTRAINT documento_lido EXPECT (NOT array_contains(flags_documento, 'documento_ilegivel')),
   CONSTRAINT estacao_no_raio EXPECT (coalesce(distancia_estacao_km <= 30, false))
 )
@@ -37,7 +37,7 @@ juntos AS (
     e.forca_evidencia_climatica, e.fonte_evidencia, e.distancia_estacao_km, e.registro_defesa_civil,
     e.chuva_mm, e.chuva_max_hora_mm, e.rajada_max_ms, e.granizo_provavel,
     r.valor_orcamento, coalesce(r.itens_extraidos, 0) AS itens_extraidos, coalesce(r.itens_casados, 0) AS itens_casados,
-    r.desvio_preco_pct, r.tem_orcamento, r.tem_ilegivel, r.laudo_dano_anterior,
+    r.desvio_preco_pct, r.tem_orcamento, r.tem_ilegivel, r.laudo_dano_anterior, r.extracao_falhou, r.docs_recebidos,
     p.qtd_orcamentos_prestador
   FROM base b
   LEFT JOIN ${catalogo}.${schema_silver}.apolices_coberturas c
@@ -59,13 +59,18 @@ SELECT
     CASE WHEN tem_ilegivel = 1 THEN 'documento_ilegivel' END,
     CASE WHEN laudo_dano_anterior = 1 THEN 'menciona_dano_anterior' END,
     CASE WHEN abs(valor_orcamento - valor_reclamado) > 0.01 * greatest(1.0, valor_reclamado) THEN 'valor_divergente' END,
-    CASE WHEN desvio_preco_pct >= 0.30 THEN 'preco_acima_referencia' END
+    CASE WHEN desvio_preco_pct >= 0.30 THEN 'preco_acima_referencia' END,
+    -- revisão #1: falhas que não podem deixar o sinistro parecer limpo (spec 10.3)
+    CASE WHEN extracao_falhou = 1 THEN 'extracao_falhou' END,
+    CASE WHEN tem_orcamento = 1 AND desvio_preco_pct IS NULL THEN 'preco_nao_conferido' END,
+    CASE WHEN coalesce(docs_recebidos, 0) < size(documentos) THEN 'documento_ausente' END
   ), x -> x IS NOT NULL) AS flags_documento,
   filter(array(
     CASE WHEN NOT apolice_existe THEN 'apolice_inexistente' END,
     CASE WHEN apolice_existe AND NOT dentro_vigencia THEN 'fora_vigencia' END,
-    CASE WHEN data_ocorrencia > data_aviso THEN 'datas_incoerentes' END,
-    CASE WHEN valor_reclamado <= 0 THEN 'valor_invalido' END,
+    CASE WHEN NOT coalesce(data_ocorrencia <= data_aviso, false) THEN 'datas_incoerentes' END,
+    CASE WHEN NOT coalesce(valor_reclamado > 0, false) THEN 'valor_invalido' END,
+    CASE WHEN causa_declarada IS NULL OR causa_declarada NOT IN ('granizo', 'vendaval', 'alagamento', 'danos_eletricos') THEN 'causa_desconhecida' END,
     CASE WHEN distancia_estacao_km IS NULL OR distancia_estacao_km > 30 THEN 'sem_estacao_no_raio' END
   ), x -> x IS NOT NULL) AS alertas_qualidade
 FROM juntos;

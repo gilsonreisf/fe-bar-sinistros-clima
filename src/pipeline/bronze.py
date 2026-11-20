@@ -19,7 +19,8 @@ def _registrar(pasta: str, tabela: str, formato: str) -> None:
         if formato == "csv":
             leitor = leitor.option("header", "true").option("cloudFiles.inferColumnTypes", "true")
         elif formato == "json":
-            leitor = leitor.schema(ESQUEMA_AVISOS)
+            # Esquema explícito (a pasta pode estar vazia); o que não couber nele vai para _rescued_data, não some
+            leitor = leitor.schema(ESQUEMA_AVISOS).option("rescuedDataColumn", "_rescued_data")
         else:  # binaryFile: os PDFs dos avisos
             leitor = leitor.option("pathGlobFilter", "*.pdf")
         return (leitor.load(f"{VOLUME}/{pasta}/")

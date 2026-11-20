@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from regras.clima import classificar_evidencia, clima_no_local, evidencia_inmet
+from regras.clima import VARIAVEIS_POR_CAUSA, classificar_evidencia, clima_no_local, evidencia_inmet
 
 COLUNAS_CLIMA = ["chuva_mm", "chuva_max_hora_mm", "rajada_max_ms", "queda_temp_max_c", "granizo_provavel"]
 ESQUEMA_EVIDENCIA = ("id_aviso STRING, forca_evidencia_climatica STRING, fonte_evidencia STRING, distancia_estacao_km DOUBLE, "
@@ -28,7 +28,13 @@ def calcular_evidencia_grupo(grupo: pd.DataFrame) -> pd.DataFrame:
                 .rename(columns={"lat_estacao": "lat", "lon_estacao": "lon"}))
     janela = janela[["codigo_estacao", "data", *COLUNAS_CLIMA]]
     lat, lon = float(a["lat"]), float(a["lon"])
-    ev = evidencia_inmet(lat, lon, a["causa_declarada"], janela, estacoes)
+    causa = a["causa_declarada"]
+    # Causa fora do domínio (nula, grafia diferente, cobertura não climática) é inconclusiva: vira 'fraca' (ou
+    # 'forte' pela Defesa Civil) e vai ao regulador, sem derrubar o update do pipeline (revisão #2; spec 10.3).
+    if isinstance(causa, str) and causa in VARIAVEIS_POR_CAUSA:
+        ev = evidencia_inmet(lat, lon, causa, janela, estacoes)
+    else:
+        ev = {"sinal": None, "distancia_km": None}
     dc = bool(a["registro_defesa_civil"]) if pd.notna(a["registro_defesa_civil"]) else False
     forca, fonte = classificar_evidencia(ev["sinal"], ev["distancia_km"], dc)
     return pd.DataFrame([{

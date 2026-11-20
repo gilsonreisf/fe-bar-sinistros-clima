@@ -55,3 +55,37 @@ def test_regras_do_sql_batem_com_as_regras_python():
         if causa != cobertura:
             assert f"WHEN '{causa}' THEN '{cobertura}'" in texto, causa
     assert f"distancia_estacao_km <= {RAIO_ESTACAO_KM:g}" in texto
+
+
+def _sql(nome: str) -> str:
+    return (PIPELINE / nome).read_text(encoding="utf-8")
+
+
+def test_falhas_de_documento_viram_flag():
+    """Revisão #1 (spec 10.3): extração falha, preço sem conferência e PDF ausente não podem passar como 'limpos'."""
+    texto = _sql("silver_sinistros.sql")
+    for flag in ("extracao_falhou", "preco_nao_conferido", "documento_ausente"):
+        assert f"'{flag}'" in texto, flag
+
+
+def test_causa_desconhecida_vira_alerta_e_expectation():
+    """Revisão #2: o domínio de causas do SQL é o mesmo das regras Python."""
+    from regras.clima import VARIAVEIS_POR_CAUSA
+
+    avisos, sinistros = _sql("silver_avisos.sql"), _sql("silver_sinistros.sql")
+    assert "CONSTRAINT causa_conhecida" in avisos and "'causa_desconhecida'" in sinistros
+    for causa in VARIAVEIS_POR_CAUSA:
+        assert f"'{causa}'" in avisos, causa
+
+
+def test_avisos_guardam_o_que_nao_coube_no_esquema_e_alertas_tratam_nulo():
+    """Revisão #6: campo com tipo errado vai para _rescued_data (e é medido), e NULL não escapa dos alertas."""
+    assert "rescuedDataColumn" in _sql("bronze.py")
+    assert "_rescued_data IS NULL" in _sql("silver_avisos.sql")
+    sinistros = _sql("silver_sinistros.sql")
+    assert "coalesce(valor_reclamado > 0, false)" in sinistros and "coalesce(data_ocorrencia <= data_aviso, false)" in sinistros
+
+
+def test_tabelas_com_ia_protegidas_contra_full_refresh():
+    """Um full refresh acidental não pode refazer o OCR e a extração de todos os PDFs (custo)."""
+    assert _sql("silver_documentos.sql").count("'pipelines.reset.allowed' = 'false'") == 2

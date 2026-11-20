@@ -51,3 +51,19 @@ UNION ALL
 SELECT 'alerta_qualidade', a, count(*)
 FROM ${catalogo}.${schema_silver}.sinistros_enriquecidos LATERAL VIEW explode(alertas_qualidade) t AS a GROUP BY ALL
 ORDER BY tipo, avisos DESC;
+
+-- Frescor (revisão #4): a MV final tem que refletir as fontes. Qualquer número acima de zero indica foto antiga
+-- (corrigir com full refresh da MV). Rodar depois de cada lote publicado (fase 5: tarefa do job_evento).
+SELECT 'enriquecido_x_documentos_resumo' AS checagem, count(*) AS divergencias
+FROM ${catalogo}.${schema_silver}.sinistros_enriquecidos s
+JOIN ${catalogo}.${schema_silver}.documentos_resumo r ON r.id_aviso = s.id_aviso
+WHERE NOT (s.valor_orcamento <=> r.valor_orcamento) OR NOT (s.desvio_preco_pct <=> r.desvio_preco_pct)
+UNION ALL
+SELECT 'enriquecido_x_evidencia_climatica', count(*)
+FROM ${catalogo}.${schema_silver}.sinistros_enriquecidos s
+JOIN ${catalogo}.${schema_silver}.evidencia_climatica e ON e.id_aviso = s.id_aviso
+WHERE NOT (s.forca_evidencia_climatica <=> e.forca_evidencia_climatica) OR NOT (s.distancia_estacao_km <=> e.distancia_estacao_km)
+UNION ALL
+SELECT 'avisos_sem_linha_no_enriquecido', count(*)
+FROM ${catalogo}.${schema_silver}.avisos a
+LEFT ANTI JOIN ${catalogo}.${schema_silver}.sinistros_enriquecidos s ON s.id_aviso = a.id_aviso;

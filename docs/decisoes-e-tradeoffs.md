@@ -298,3 +298,21 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - os 9 laudos de dano preexistente foram detectados.
 
 **Motivo:** menor custo e reprocessamento seletivo, uma única implementação das regras (sem divergência entre gerador e pipeline) e fidelidade à regra da spec de que toda falha vai para o regulador.
+
+## D-020: Pendências da revisão da fase 2 que dependem de decisões de modelagem
+
+**Data:** 2026-11-20
+
+**Contexto:** a revisão independente da fase 2 apontou dois pontos que não são defeitos do pipeline. São definições que as fases 3 a 5 precisam fixar antes de depender delas.
+
+**Escolhas:**
+- **`qtd_orcamentos_prestador` passa a ser point-in-time na fase 3.** Hoje a feature conta todos os avisos presentes, então o valor de um aviso antigo muda quando chegam os lotes seguintes, e a escala do histórico de 2025 (12 meses) difere da do evento.
+  - **Antes do treino:** a feature será redefinida como a quantidade de avisos com orçamento do mesmo prestador nos N dias anteriores a `data_aviso`, calculada do mesmo jeito no histórico e no evento.
+  - **Quem fecha:** o plano da fase 3 define N e o teste de igualdade entre treino e serving.
+  - **Até lá:** a coluna atual é só descritiva.
+- **Semântica dos alertas para a fase 5:** `alertas_qualidade` mistura alertas que bloqueiam e alertas informativos.
+  - **Informativo:** `sem_estacao_no_raio` (68% do lote 1, a maioria em municípios com registro da Defesa Civil) não bloqueia o fast track quando a evidência é `forte` pela Defesa Civil. A D-015 foi criada justamente para esse caso.
+  - **Bloqueiam o fast track:** `apolice_inexistente`, `fora_vigencia`, `datas_incoerentes`, `valor_invalido`, `causa_desconhecida` e as flags `documento_ilegivel`, `extracao_falhou`, `preco_nao_conferido` e `documento_ausente`.
+- **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) ficam **para aprovação do autor**, porque o plano da fase 2 foi executado sem aprovação prévia.
+
+**Motivo:** fixar essas definições antes do treino e do fast track evita divergência entre treino e serving e mantém a meta de fast track coerente com a regra de duas fontes.

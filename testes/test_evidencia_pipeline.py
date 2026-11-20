@@ -3,7 +3,7 @@ from datetime import date, timedelta
 import pandas as pd
 import pytest
 
-from regras.clima import JANELA_DIAS, clima_no_local, registro_defesa_civil
+from regras.clima import JANELA_DIAS, clima_no_local, evidencia_inmet, indexar_clima_por_data, janela_clima, registro_defesa_civil
 from regras.sinistro import ESQUEMA_EVIDENCIA, calcular_evidencia_grupo
 
 
@@ -22,7 +22,10 @@ def _grupo_como_pipeline(ctx, aviso: dict) -> pd.DataFrame:
         return pd.DataFrame([base | {"codigo_estacao": None, "data": None, "lat_estacao": None, "lon_estacao": None,
                                      "chuva_mm": None, "chuva_max_hora_mm": None, "rajada_max_ms": None,
                                      "queda_temp_max_c": None, "granizo_provavel": None}])
-    return jan.assign(**base)
+    jan = jan.assign(**base)
+    # Mesma ordem de colunas do join no Spark: primeiro as do aviso, depois as do clima (a ordem importa se houver
+    # nomes repetidos, como no bug de lat/lon achado no lote 1)
+    return jan[list(base) + [c for c in jan.columns if c not in base]]
 
 
 def test_evidencia_do_pipeline_bate_com_o_gabarito(evento, mundo):
@@ -34,6 +37,14 @@ def test_evidencia_do_pipeline_bate_com_o_gabarito(evento, mundo):
         out = calcular_evidencia_grupo(_grupo_como_pipeline(ctx, aviso)).iloc[0]
         g = gab.loc[aviso["id_aviso"]]
         assert (out.forca_evidencia_climatica, out.fonte_evidencia) == (g.forca_evidencia_esperada, g.fonte_evidencia_esperada), aviso["id_aviso"]
+        # Revisão #5: além da força, a distância e o clima registrados batem com as regras aplicadas direto
+        data = date.fromisoformat(aviso["data_ocorrencia"])
+        janela = janela_clima(indexar_clima_por_data(ctx.clima_diario), data)
+        ev = evidencia_inmet(aviso["lat"], aviso["lon"], aviso["causa_declarada"], janela, ctx.estacoes)
+        assert out.distancia_estacao_km == pytest.approx(ev["distancia_km"]) if ev["distancia_km"] is not None else pd.isna(out.distancia_estacao_km)
+        local = clima_no_local(aviso["lat"], aviso["lon"], janela, ctx.estacoes)
+        for var in ("chuva_mm", "chuva_max_hora_mm", "rajada_max_ms"):
+            assert (out[var] == local[var]) if local[var] is not None else pd.isna(out[var]), (aviso["id_aviso"], var)
 
 
 def test_grupo_sem_estacao_e_fraca_ou_defesa_civil():
@@ -79,3 +90,31 @@ def test_distancia_usa_a_coordenada_da_estacao_e_nao_a_do_aviso():
     out = calcular_evidencia_grupo(grupo).iloc[0]
     assert out.distancia_estacao_km == pytest.approx(22.2, abs=0.5)
     assert out.forca_evidencia_climatica == "contraria" and out.rajada_max_ms == 5.0
+
+
+@pytest.mark.parametrize("causa", [None, "Granizo", "incendio"])
+def test_causa_fora_do_dominio_nao_derruba_o_pipeline(causa):
+    """Revisão #2: uma causa desconhecida num aviso não pode falhar o update inteiro; vira 'fraca' (ou Defesa Civil)."""
+    linha = {"id_aviso": "AV-X", "codigo_ibge": 1, "lat": -27.0, "lon": -50.0, "data_ocorrencia": date(2026, 9, 28),
+             "causa_declarada": causa, "codigo_estacao": "S", "data": date(2026, 9, 28), "lat_estacao": -27.01,
+             "lon_estacao": -50.0, "chuva_mm": 80.0, "chuva_max_hora_mm": 20.0, "rajada_max_ms": 25.0,
+             "queda_temp_max_c": 5.0, "granizo_provavel": True}
+    sem_dc = calcular_evidencia_grupo(pd.DataFrame([linha | {"registro_defesa_civil": False}])).iloc[0]
+    com_dc = calcular_evidencia_grupo(pd.DataFrame([linha | {"registro_defesa_civil": True}])).iloc[0]
+    assert (sem_dc.forca_evidencia_climatica, sem_dc.fonte_evidencia) == ("fraca", "nenhuma")
+    assert (com_dc.forca_evidencia_climatica, com_dc.fonte_evidencia) == ("forte", "defesa_civil")
+
+
+def test_estacao_mais_proxima_sem_a_variavel_cede_para_a_seguinte():
+    """Revisão #5: com várias estações, a mais próxima sem rajada válida (NaN) cede para a próxima dentro do raio."""
+    base = {"id_aviso": "AV-X", "codigo_ibge": 1, "lat": -27.0, "lon": -50.0, "data_ocorrencia": date(2026, 9, 28),
+            "causa_declarada": "vendaval", "registro_defesa_civil": False, "data": date(2026, 9, 28),
+            "chuva_mm": 1.0, "chuva_max_hora_mm": 0.5, "queda_temp_max_c": 0.0, "granizo_provavel": False}
+    grupo = pd.DataFrame([
+        base | {"codigo_estacao": "A_2KM", "lat_estacao": -27.02, "lon_estacao": -50.0, "rajada_max_ms": None},
+        base | {"codigo_estacao": "B_20KM", "lat_estacao": -27.18, "lon_estacao": -50.0, "rajada_max_ms": 19.0},
+        base | {"codigo_estacao": "C_60KM", "lat_estacao": -27.54, "lon_estacao": -50.0, "rajada_max_ms": 30.0},
+    ])
+    out = calcular_evidencia_grupo(grupo).iloc[0]
+    assert out.rajada_max_ms == 19.0 and out.distancia_estacao_km == pytest.approx(20.0, abs=0.5)
+    assert (out.forca_evidencia_climatica, out.fonte_evidencia) == ("forte", "inmet")

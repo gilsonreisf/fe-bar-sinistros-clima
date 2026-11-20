@@ -96,3 +96,8 @@ def test_layout_bate_com_o_contrato_do_landing(tmp_path, mundo, monkeypatch):
     assert "clima_horario" in PASTAS_LANDING
     aviso = json.loads((s / "_staging/lote_01/avisos/avisos_lote_01.jsonl").read_text().splitlines()[0])
     assert list(aviso) == nomes_do_esquema(ESQUEMA_AVISOS)
+    # Revisão #6: os tipos do JSON publicado seguem o esquema do bronze (senão o Auto Loader resgataria o campo)
+    tipos = {"STRING": str, "DOUBLE": (int, float), "INT": int, "ARRAY<STRING>": list}
+    for parte in ESQUEMA_AVISOS.split(", "):
+        nome, tipo = parte.split(maxsplit=1)
+        assert isinstance(aviso[nome], tipos[tipo]), (nome, tipo, aviso[nome])

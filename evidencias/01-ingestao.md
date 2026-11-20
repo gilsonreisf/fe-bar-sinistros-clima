@@ -1,6 +1,6 @@
 # Ingestão e enriquecimento: lote 1 do evento
 
-Executado em 2026-11-20 20:33 com `uv run python scripts/registrar_evidencia.py src/governanca/91_conferir_pipeline.sql` (catálogo e schemas lidos do `.env`; D-016).
+Executado em 2026-11-20 20:50 com `uv run python scripts/registrar_evidencia.py src/governanca/91_conferir_pipeline.sql` (catálogo e schemas lidos do `.env`; D-016).
 
 ## Consulta 1
 
@@ -126,3 +126,28 @@ ORDER BY tipo, avisos DESC
 | alerta_qualidade | sem_estacao_no_raio | 547 |
 | flag_documento | preco_acima_referencia | 25 |
 | flag_documento | menciona_dano_anterior | 9 |
+| flag_documento | preco_nao_conferido | 6 |
+
+## Consulta 7
+
+```sql
+SELECT 'enriquecido_x_documentos_resumo' AS checagem, count(*) AS divergencias
+FROM fe_bar_sinistros_catalog.silver.sinistros_enriquecidos s
+JOIN fe_bar_sinistros_catalog.silver.documentos_resumo r ON r.id_aviso = s.id_aviso
+WHERE NOT (s.valor_orcamento <=> r.valor_orcamento) OR NOT (s.desvio_preco_pct <=> r.desvio_preco_pct)
+UNION ALL
+SELECT 'enriquecido_x_evidencia_climatica', count(*)
+FROM fe_bar_sinistros_catalog.silver.sinistros_enriquecidos s
+JOIN fe_bar_sinistros_catalog.silver.evidencia_climatica e ON e.id_aviso = s.id_aviso
+WHERE NOT (s.forca_evidencia_climatica <=> e.forca_evidencia_climatica) OR NOT (s.distancia_estacao_km <=> e.distancia_estacao_km)
+UNION ALL
+SELECT 'avisos_sem_linha_no_enriquecido', count(*)
+FROM fe_bar_sinistros_catalog.silver.avisos a
+LEFT ANTI JOIN fe_bar_sinistros_catalog.silver.sinistros_enriquecidos s ON s.id_aviso = a.id_aviso
+```
+
+| checagem | divergencias |
+|---|---|
+| enriquecido_x_documentos_resumo | 0 |
+| enriquecido_x_evidencia_climatica | 0 |
+| avisos_sem_linha_no_enriquecido | 0 |
