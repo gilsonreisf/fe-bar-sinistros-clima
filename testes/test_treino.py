@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml.treino import (LIMIAR_FAST_TRACK, contribuicoes, decidir_promocao, dividir_temporal, metricas, por_padrao,
-                       treinar)
+from ml.treino import (LIMIAR_FAST_TRACK, contribuicoes, decidir_promocao, dividir_temporal, metricas,
+                       metricas_fast_track, passa_piso, por_padrao, regra_base, treinar)
 from regras.features import montar_features
 
 
@@ -71,3 +71,32 @@ def test_treinar_separa_sinal_claro_e_contribuicoes_somam_o_logito():
     assert list(c.columns) == list(X.columns) + ["base"]
     logito = modelo.booster_.predict(X, raw_score=True)
     assert np.allclose(c.sum(axis=1).to_numpy(), logito)
+
+
+def test_piso_absoluto_e_auc_nan():
+    """Revisão #7b/#7e: sem piso, uma versão ruim viraria champion ao mudar o contrato; AUC NaN não trava a promoção."""
+    assert passa_piso({"teste_auc": 0.95, "teste_suspeitos_abaixo_limiar": 0.05})
+    assert not passa_piso({"teste_auc": 0.70, "teste_suspeitos_abaixo_limiar": 0.05})
+    assert not passa_piso({"teste_auc": 0.95, "teste_suspeitos_abaixo_limiar": 0.30})
+    assert decidir_promocao(0.99, 0.80, contrato_igual=False, passou_piso=False) == "challenger"
+    assert decidir_promocao(0.99, float("nan")) == "champion"
+
+
+def test_regra_base_e_o_ou_das_regras_simples():
+    """Linha de base honesta (revisão #6): sem cobertura OU evidência contrária OU apólice < 30 dias OU laudo de dano
+    anterior OU preço ≥ 30% acima da tabela."""
+    df = pd.DataFrame({"cobertura_valida": [True, False, True, True, True, True],
+                       "forca_evidencia_climatica": ["forte", "forte", "contraria", "forte", "forte", "fraca"],
+                       "dias_desde_contratacao": [200, 200, 200, 10, 200, 200],
+                       "menciona_dano_anterior": [False, False, False, False, True, False],
+                       "desvio_preco_pct": [0.05, 0.0, 0.0, 0.0, 0.0, None]})
+    assert regra_base(df).tolist() == [0, 1, 1, 1, 1, 0]
+
+
+def test_metricas_fast_track_medem_o_vazamento_na_populacao_elegivel():
+    df = pd.DataFrame({"valor_reclamado": [3000.0, 4000.0, 9000.0, 2000.0], "cobertura_valida": [True, True, True, False],
+                       "forca_evidencia_climatica": ["forte", "forte", "forte", "forte"]})
+    m = metricas_fast_track(df, y=np.array([1, 0, 1, 1]), score=np.array([0.1, 0.05, 0.1, 0.1]), prefixo="t_")
+    # elegíveis: as duas primeiras (≤ R$ 5 mil, com cobertura e evidência forte); 1 suspeito elegível, liberado
+    assert m == {"t_ft_elegiveis": 2.0, "t_ft_suspeitos_elegiveis": 1.0, "t_ft_suspeitos_liberados": 1.0,
+                 "t_ft_legitimos_liberados_pct": 1.0}

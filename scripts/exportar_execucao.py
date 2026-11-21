@@ -17,6 +17,7 @@ from pathlib import Path
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _HOST = re.compile(r"https://[a-z0-9.-]+\.(?:cloud\.databricks\.com|azuredatabricks\.net|gcp\.databricks\.com)")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_ORG = re.compile(r"[?&]o=\d+")  # ID do workspace nas URLs
 
 
 def extrair_modelo(html: str) -> dict:
@@ -27,7 +28,7 @@ def extrair_modelo(html: str) -> dict:
 
 
 def limpar_texto(texto: str) -> str:
-    return _EMAIL.sub("<e-mail>", _HOST.sub("<workspace>", _ANSI.sub("", texto)))
+    return _ORG.sub("", _EMAIL.sub("<e-mail>", _HOST.sub("<workspace>", _ANSI.sub("", texto))))
 
 
 def _linhas(texto: str) -> list[str]:

@@ -12,7 +12,7 @@ def test_evidencia_tem_as_secoes_e_compara_registrado_com_ablacao():
     md = renderizar_evidencia_modelo(
         quando="2026-11-21 01:00",
         resultado={"modelo": "cat.ml.modelo_suspeita", "versao": "1", "alias": "champion", "run_id": "abc"},
-        metricas={"teste_auc": 0.99, "evento_auc": 0.97, "treino_auc": 1.0},
+        metricas={"teste_auc": 0.99, "evento_auc": 0.97, "treino_auc": 1.0, "regra_teste_auc": 0.93},
         metricas_ablacao={"teste_auc": 0.98, "evento_auc": 0.80},
         parametros={"num_leaves": "15", "features": "a,b"},
         entradas=[("features_treino", "treino", "cat.ml.features_treino", "0")],
@@ -21,8 +21,8 @@ def test_evidencia_tem_as_secoes_e_compara_registrado_com_ablacao():
         versao={"aliases": ["champion"], "tags": {"teste_auc": "0.9900"}, "status": "READY"},
         experimento="/Shared/sinistros_clima/dev/modelo_suspeita",
     )
-    for trecho in ("# Modelo de suspeita", "## Resultado do job", "## Métricas", "| teste_auc | 0.99 | 0.98 |",
-                   "| evento_auc | 0.97 | 0.8 |", "## Dados de entrada (log_input)", "cat.ml.features_treino",
+    for trecho in ("# Modelo de suspeita", "## Resultado do job", "## Métricas", "| teste_auc | 0.99 | 0.93 | 0.98 |",
+                   "| evento_auc | 0.97 |  | 0.8 |", "## Dados de entrada (log_input)", "cat.ml.features_treino",
                    "## Artefatos", "curva_roc.png", "### Teste por padrão", "champion", "## Parâmetros"):
         assert trecho in md, trecho
     assert "@" not in md and "/Users/" not in md

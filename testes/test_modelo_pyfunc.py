@@ -12,7 +12,7 @@ from regras.features import COLUNAS_ENTRADA, FEATURES, montar_features, preparar
 from test_treino import _dados
 
 
-def _salvar(tmp_path: Path) -> str:
+def _salvar(tmp_path: Path, features_py: Path | None = None) -> str:
     df, y = _dados()
     modelo = treinar(montar_features(df), y)
     booster = tmp_path / "booster.txt"
@@ -22,8 +22,9 @@ def _salvar(tmp_path: Path) -> str:
     destino = tmp_path / "modelo"
     mlflow.pyfunc.save_model(
         path=str(destino), python_model=str(Path(ml.__file__).with_name("modelo_pyfunc.py")),
-        artifacts={"booster": str(booster), "config": str(config)},
-        code_paths=[str(Path(regras.__file__).parent)], signature=assinatura())
+        artifacts={"booster": str(booster), "config": str(config),
+                   "features": str(features_py or Path(regras.__file__).with_name("features.py"))},
+        signature=assinatura())
     return str(destino)
 
 
@@ -54,8 +55,27 @@ def test_modelo_aceita_dias_inteiros_como_vem_do_spark(tmp_path):
     assert carregado.predict(preparar_entrada(entrada64))["score_suspeita"].notna().all()
 
 
-def test_modelo_leva_as_regras_junto_e_nao_depende_do_wheel(tmp_path):
-    """No serving e no spark_udf o wheel do projeto pode não estar instalado: features.py vai dentro do modelo."""
-    destino = Path(_salvar(tmp_path))
-    assert (destino / "code" / "regras" / "features.py").exists()
-    assert (destino / "python_model.py").exists() or any(destino.rglob("modelo_pyfunc.py"))
+def test_modelo_usa_o_proprio_codigo_de_features_mesmo_com_regras_ja_importado(tmp_path):
+    """Revisão #2: com code_paths, um processo que já importou `regras` (notebook, pipeline) usaria o features.py do
+    processo, não o do modelo. O modelo carrega o próprio arquivo por caminho, com nome de módulo único."""
+    import subprocess
+    import sys
+
+    copia = tmp_path / "features_sentinela.py"
+    copia.write_text(Path(regras.__file__).with_name("features.py").read_text(encoding="utf-8")
+                     .replace("LIMIAR_FAST_TRACK = 0.2", "LIMIAR_FAST_TRACK = -1.0"), encoding="utf-8")
+    destino = _salvar(tmp_path, features_py=copia)
+    codigo = f"""
+import regras.features, mlflow, json
+from test_treino import _dados
+from regras.features import preparar_entrada
+m = mlflow.pyfunc.load_model({destino!r})
+df, _ = _dados(n=20)
+s = m.predict(preparar_entrada(df))
+print(json.dumps({{"vazios": int((s["fatores_suspeita"] == "").sum())}}))
+"""
+    r = subprocess.run([sys.executable, "-c", codigo], capture_output=True, text=True,
+                       cwd=Path(__file__).parent, env={**__import__("os").environ, "MLFLOW_DISABLE_AGENT_HINT": "1"})
+    assert r.returncode == 0, r.stderr[-2000:]
+    # com o limiar sentinela (-1), todo score passa do limiar e ganha fatores (ou o texto de combinação)
+    assert json.loads(r.stdout.strip().splitlines()[-1])["vazios"] == 0

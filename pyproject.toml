@@ -30,6 +30,9 @@ packages = ["src/ambiente", "src/regras", "src/ml", "src/dados_sinteticos"]
 [tool.uv]
 # ml: treino e modelo de suspeita (fase 3); sem shap, que exige numpy>=2 (D-021)
 default-groups = ["dev", "gerador", "ml"]
+# Paridade com o ambiente serverless 4 dos jobs (versões vistas no modelo registrado): os testes locais rodam com as
+# mesmas versões de pandas e numpy (revisão da fase 3, #10)
+constraint-dependencies = ["pandas==2.2.3", "numpy==2.1.3"]
 
 [tool.pytest.ini_options]
 pythonpath = ["scripts"]

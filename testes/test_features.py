@@ -59,10 +59,50 @@ def test_clima_bruto_so_quando_pedido():
     assert montar_features(df, com_clima_bruto=True)["rajada_max_ms"].iloc[0] == 20.0
 
 
+def _x(**kw):
+    return montar_features(_entrada(**kw)).iloc[0]
+
+
 def test_principais_fatores_so_os_que_aumentam_a_suspeita():
-    nomes = ["desvio_preco_pct", "dias_desde_contratacao", "evidencia_climatica", "ramo"]
-    fatores = principais_fatores(np.array([2.0, -1.0, 0.5, 0.0]), nomes, k=3)
-    assert fatores == ["Preço acima da tabela de referência", "Evidência climática fraca ou contrária"]
+    nomes = list(FEATURES)
+    contrib = np.zeros(len(nomes))
+    contrib[nomes.index("desvio_preco_pct")] = 2.0
+    contrib[nomes.index("dias_desde_contratacao")] = -1.0
+    contrib[nomes.index("evidencia_climatica")] = 0.5
+    fatores = principais_fatores(contrib, nomes, _x(desvio_preco_pct=0.8, forca_evidencia_climatica="contraria"))
+    assert fatores == ["Preço acima da tabela de referência", "Evidência climática contrária ao evento declarado"]
+
+
+def test_fator_so_aparece_se_o_valor_justifica():
+    """Revisão #5: o SHAP positivo de uma feature com valor normal (ou nulo) não vira motivo para o regulador."""
+    nomes = list(FEATURES)
+    contrib = np.full(len(nomes), 1.0)
+    normal = principais_fatores(contrib, nomes, _x(), k=10)
+    assert normal == []  # valores típicos: nenhuma frase falsa
+    sem_cobertura = principais_fatores(contrib, nomes, _x(cobertura_valida=False, lmi=None), k=10)
+    assert "Causa sem cobertura contratada" in sem_cobertura
+    assert not any("LMI" in f for f in sem_cobertura)  # LMI nulo não é "valor próximo do limite"
+    atipico = principais_fatores(contrib, nomes, _x(participacao_prestador_30d=0.002, dias_desde_contratacao=6,
+                                                    forca_evidencia_climatica="fraca", menciona_dano_anterior=True,
+                                                    valor_reclamado=79000.0, lmi=80000.0), k=10)
+    assert {"Prestador com concentração atípica de orçamentos", "Apólice contratada há menos de 30 dias",
+            "Evidência climática fraca (sem dado no raio)", "Laudo menciona dano anterior ao evento",
+            "Valor próximo do limite da cobertura (LMI)", "Valor reclamado alto"} <= set(atipico)
+
+
+def test_contribuicao_pequena_nao_vira_fator():
+    nomes = list(FEATURES)
+    contrib = np.zeros(len(nomes))
+    contrib[nomes.index("desvio_preco_pct")] = 0.01
+    assert principais_fatores(contrib, nomes, _x(desvio_preco_pct=0.8)) == []
+
+
+def test_decimal_do_spark_vira_float():
+    from decimal import Decimal
+    df = _entrada(participacao_prestador_30d=Decimal("0.000448"), valor_reclamado=Decimal("4000.00"))
+    e = preparar_entrada(df)
+    assert e["participacao_prestador_30d"].dtype == "float64" and e["valor_reclamado"].iloc[0] == 4000.0
+    assert montar_features(df)["participacao_prestador_30d"].iloc[0] == pytest.approx(0.000448)
 
 
 def test_booleano_anulavel_do_arrow_e_numpy():

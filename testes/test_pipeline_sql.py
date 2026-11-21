@@ -114,7 +114,8 @@ def test_participacao_do_prestador_e_point_in_time_e_suavizada_nos_dois_lados():
     """Janela estritamente anterior ao dia do aviso e proporção suavizada (empírica bayesiana), igual nos dois lados:
     no início do evento a janela é pequena e 1 aviso anterior parecia concentração (lote 1)."""
     from regras.features import JANELA_PRESTADOR_DIAS, PSEUDO_AVISOS_JANELA, PSEUDO_AVISOS_PRESTADOR
-    formula = (f"(coalesce(avisos_prestador, 0) + {PSEUDO_AVISOS_PRESTADOR}) / "
+    # CAST para DOUBLE: com o literal 1.0 o Spark devolvia DECIMAL, que a assinatura do modelo recusa (revisão #1)
+    formula = (f"CAST(coalesce(avisos_prestador, 0) + {PSEUDO_AVISOS_PRESTADOR} AS DOUBLE) / "
                f"(coalesce(avisos_janela, 0) + {PSEUDO_AVISOS_JANELA})")
     for nome in ("silver_historico.sql", "silver_sinistros.sql"):
         texto = _sql(nome)
@@ -125,3 +126,22 @@ def test_participacao_do_prestador_e_point_in_time_e_suavizada_nos_dois_lados():
 def test_desvio_de_preco_usa_a_mesma_chave_nos_dois_lados():
     chave = "lower(regexp_replace(trim(descricao), '\\\\s+', ' '))"
     assert chave in _sql("silver_documentos.sql") and chave in _sql("silver_historico.sql")
+
+
+def test_contrato_de_features_acompanha_o_codigo():
+    """Mudou features.py ou o SQL das colunas de entrada? Suba VERSAO_CONTRATO_FEATURES e regrave o hash (revisão #7a).
+
+    O portão de promoção só compara AUC entre versões do mesmo contrato; sem este teste, o contrato seria uma
+    constante manual esquecida quando o SQL muda."""
+    import hashlib
+    import json
+    from regras.features import VERSAO_CONTRATO_FEATURES
+
+    def hash_contrato_features(raiz):
+        arquivos = ("src/regras/features.py", "src/pipeline/silver_historico.sql", "src/pipeline/silver_sinistros.sql")
+        return hashlib.sha256(b"".join((raiz / a).read_bytes() for a in arquivos)).hexdigest()
+
+    registro = json.loads((RAIZ / "src/regras/contrato_features.json").read_text(encoding="utf-8"))
+    assert registro == {"versao": VERSAO_CONTRATO_FEATURES, "sha256": hash_contrato_features(RAIZ)}, (
+        "o código das features mudou: suba VERSAO_CONTRATO_FEATURES e atualize src/regras/contrato_features.json "
+        f"(sha256 atual: {hash_contrato_features(RAIZ)})")

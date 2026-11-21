@@ -16,8 +16,8 @@ import pandas as pd
 
 RAIZ = Path(__file__).resolve().parents[1]
 TABELAS = {"por_padrao_teste.json": "Teste (out–dez/2025) por padrão",
-           "por_padrao_evento_lote1.json": "Evento 2026 (lote 1) por padrão"}
-_IGNORAR_METRICA = ("_n", "_n_suspeitos")
+           "por_padrao_evento_validacao.json": "Evento 2026 (lotes de validação) por padrão"}
+_IGNORAR_METRICA = ("_n", "_n_suspeitos", "_ft_elegiveis", "_ft_suspeitos_elegiveis", "_ft_suspeitos_liberados")
 
 
 def _valor(v) -> str:
@@ -52,16 +52,20 @@ def renderizar_evidencia_modelo(quando: str, resultado: dict, metricas: dict, me
          "",
          "## Métricas",
          "",
-         "Prefixos: `treino_` (jan–set/2025), `teste_` (out–dez/2025, split temporal) e `evento_` (avisos do evento de "
-         "2026 já publicados, pontuados pelo modelo carregado do UC). O limiar 0,2 é o corte do fast track (spec 6.3).",
+         "Prefixos: `treino_` (jan–set/2025), `teste_` (out–dez/2025, split temporal) e `evento_` (lotes de validação do "
+         "evento de 2026, pontuados pelo modelo carregado do UC). O limiar 0,2 é o corte do fast track (spec 6.3). "
+         "`ft_*` mede só a população que concorre ao fast track (≤ R$ 5 mil, com cobertura e evidência forte). A linha de "
+         "base de regras é o OU de cinco regras simples (sem cobertura, evidência contrária, apólice com menos de 30 "
+         "dias, laudo com dano anterior, preço ≥ 30% acima da tabela).",
          "",
-         "| métrica | modelo registrado | ablação com clima bruto |",
-         "|---|---|---|"]
+         "| métrica | modelo registrado | linha de base de regras | ablação com clima bruto |",
+         "|---|---|---|---|"]
     for nome in sorted(metricas):
-        if nome.endswith(_IGNORAR_METRICA):
+        if nome.endswith(_IGNORAR_METRICA) or nome.startswith("regra_"):
             continue
-        p.append(f"| {nome} | {_valor(metricas[nome])} | {_valor(metricas_ablacao.get(nome))} |")
-    contagens = {k: int(v) for k, v in metricas.items() if k.endswith(_IGNORAR_METRICA)}
+        p.append(f"| {nome} | {_valor(metricas[nome])} | {_valor(metricas.get('regra_' + nome))} "
+                 f"| {_valor(metricas_ablacao.get(nome))} |")
+    contagens = {k: int(v) for k, v in metricas.items() if k.endswith(_IGNORAR_METRICA) and not k.startswith("regra_")}
     p += ["", "Tamanhos: " + ", ".join(f"{k} = {v}" for k, v in sorted(contagens.items())) + ".", ""]
     for titulo, tabela in tabelas.items():
         p += [f"### {titulo}", "", tabela_markdown(tabela), ""]
@@ -104,7 +108,10 @@ def main(task_run_id: str, saida: str = "evidencias/04-ml.md") -> None:
     tabelas = {}
     with tempfile.TemporaryDirectory() as tmp:
         for arquivo, titulo in TABELAS.items():
-            caminho = Path(cliente.download_artifacts(run.info.run_id, arquivo, tmp))
+            try:
+                caminho = Path(cliente.download_artifacts(run.info.run_id, arquivo, tmp))
+            except Exception:  # sem lotes de validação no pipeline, a tabela do evento não existe
+                continue
             conteudo = json.loads(caminho.read_text(encoding="utf-8"))
             tabelas[titulo] = pd.DataFrame(conteudo["data"], columns=conteudo["columns"])
     mv = cliente.get_model_version(resultado["modelo"], resultado["versao"])

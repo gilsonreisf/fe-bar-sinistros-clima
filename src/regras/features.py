@@ -5,19 +5,23 @@ silver.sinistros_enriquecidos (mesmas regras do pipeline). Aqui elas viram a mat
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 import numpy as np
 import pandas as pd
 
 LIMIAR_FAST_TRACK = 0.2  # spec 6.3: score abaixo disso é condição do fast track (e não há fator a explicar)
+TETO_FAST_TRACK_RS = 5000.0  # spec 6.3: valor reclamado máximo do fast track
 JANELA_PRESTADOR_DIAS = 30  # participação do prestador nos 30 dias anteriores ao aviso (point-in-time; D-020/D-021)
 # Proporção suavizada (empírica bayesiana): (avisos do prestador + 1) / (avisos na janela + 2000), como se houvesse
 # 2.000 avisos "virtuais" a 0,5‰ (participação típica de um prestador no histórico). Sem isso, no início de um evento
 # a janela é pequena e 1 aviso anterior já parecia concentração (lote 1: 47 de 53 falsos positivos; D-021).
 PSEUDO_AVISOS_JANELA = 2000
-PSEUDO_AVISOS_PRESTADOR = 1.0  # = 2000 × 0,0005
+PSEUDO_AVISOS_PRESTADOR = 1  # = 2000 × 0,0005 (inteiro: o literal 1.0 virava DECIMAL no Spark; revisão #1)
 # Versão do contrato das features: mudar a definição de qualquer feature exige subir este número. O portão de promoção
-# só compara AUC entre versões do mesmo contrato (D-021).
-VERSAO_CONTRATO_FEATURES = "2"
+# só compara AUC entre versões do mesmo contrato (D-021). O teste test_contrato_de_features_acompanha_o_codigo amarra o
+# número ao hash deste arquivo e do SQL das colunas de entrada (src/regras/contrato_features.json).
+VERSAO_CONTRATO_FEATURES = "3"
 
 COLUNAS_ENTRADA = ["valor_reclamado", "lmi", "desvio_preco_pct", "dias_desde_contratacao", "forca_evidencia_climatica",
                    "cobertura_valida", "menciona_dano_anterior", "participacao_prestador_30d", "causa_declarada", "ramo"]
@@ -32,18 +36,33 @@ FEATURES = ["log_valor_reclamado", "razao_valor_lmi", "desvio_preco_pct", "dias_
 COLUNAS_PROIBIDAS = frozenset({"decisao_final", "valor_pago", "motivo_decisao", "padrao", "preexistente",
                                "decisao_esperada", "valor_devido", "motivo", "suspeito"})
 
-ROTULOS = {
-    "log_valor_reclamado": "Valor reclamado alto",
-    "razao_valor_lmi": "Valor próximo do limite da cobertura (LMI)",
-    "desvio_preco_pct": "Preço acima da tabela de referência",
-    "dias_desde_contratacao": "Apólice contratada há pouco tempo",
-    "evidencia_climatica": "Evidência climática fraca ou contrária",
-    "cobertura_valida": "Causa sem cobertura contratada",
-    "menciona_dano_anterior": "Laudo menciona dano anterior ao evento",
-    "participacao_prestador_30d": "Prestador com concentração atípica de orçamentos",
-    "causa_declarada": "Causa declarada",
-    "ramo": "Ramo da apólice",
-    "chuva_mm": "Chuva no dia", "chuva_max_hora_mm": "Chuva máxima em uma hora",
+LIMIAR_VALOR_ALTO_RS = 20000.0  # acima disso o orçamento exige laudo (gerador e regra de negócio)
+LIMIAR_DIAS_RECENTE = 30  # CG-2.4: sinistro nos primeiros 30 dias de vigência passa por análise
+LIMIAR_DESVIO_PRECO = 0.30  # mesmo corte da flag preco_acima_referencia (silver)
+LIMIAR_PARTICIPACAO_ATIPICA = 0.001  # 1‰ ≈ 3 ou mais avisos em 30 dias no histórico (≈ p95 dos prestadores comuns)
+CONTRIBUICAO_MINIMA = 0.1  # SHAP (logito) mínimo para um fator ser citado
+
+# Fator citado ao regulador só quando o VALOR da feature justifica a frase (revisão #5): o SHAP sozinho também é
+# positivo para valores típicos ou nulos e geraria motivos falsos (ex.: "valor próximo do LMI" com LMI nulo).
+_FATORES = {
+    "log_valor_reclamado": lambda v: "Valor reclamado alto" if v >= np.log1p(LIMIAR_VALOR_ALTO_RS) else None,
+    "razao_valor_lmi": lambda v: "Valor próximo do limite da cobertura (LMI)" if v >= 0.8 else None,
+    "desvio_preco_pct": lambda v: "Preço acima da tabela de referência" if v >= LIMIAR_DESVIO_PRECO else None,
+    "dias_desde_contratacao": lambda v: "Apólice contratada há menos de 30 dias" if v < LIMIAR_DIAS_RECENTE else None,
+    "evidencia_climatica": lambda v: ("Evidência climática contrária ao evento declarado" if v == 0
+                                      else "Evidência climática fraca (sem dado no raio)" if v == 1 else None),
+    "cobertura_valida": lambda v: "Causa sem cobertura contratada" if v == 0 else None,
+    "menciona_dano_anterior": lambda v: "Laudo menciona dano anterior ao evento" if v == 1 else None,
+    "participacao_prestador_30d": lambda v: ("Prestador com concentração atípica de orçamentos"
+                                             if v >= LIMIAR_PARTICIPACAO_ATIPICA else None),
+}
+FATOR_COMBINADO = "Combinação de fatores fora do padrão do histórico"
+ROTULOS = {  # nomes legíveis das features (gráficos de SHAP)
+    "log_valor_reclamado": "Valor reclamado", "razao_valor_lmi": "Valor ÷ LMI", "desvio_preco_pct": "Desvio de preço",
+    "dias_desde_contratacao": "Dias desde a contratação", "evidencia_climatica": "Evidência climática",
+    "cobertura_valida": "Cobertura válida", "menciona_dano_anterior": "Laudo com dano anterior",
+    "participacao_prestador_30d": "Participação do prestador (30 dias)", "causa_declarada": "Causa declarada",
+    "ramo": "Ramo da apólice", "chuva_mm": "Chuva no dia", "chuva_max_hora_mm": "Chuva máxima em uma hora",
     "rajada_max_ms": "Rajada máxima", "distancia_estacao_km": "Distância até a estação",
 }
 
@@ -56,7 +75,8 @@ def rotulo_suspeito(padrao: pd.Series) -> pd.Series:
 
 
 def _numero(s: pd.Series) -> pd.Series:
-    return pd.to_numeric(s, errors="coerce").astype(float)
+    """Número como float64; aceita Decimal (DECIMAL do Spark) e texto numérico."""
+    return pd.to_numeric(s.map(lambda v: float(v) if isinstance(v, Decimal) else v), errors="coerce").astype(float)
 
 
 def _booleano(s: pd.Series) -> pd.Series:
@@ -113,7 +133,18 @@ def preparar_entrada(df: pd.DataFrame, com_clima_bruto: bool = False) -> pd.Data
     return saida
 
 
-def principais_fatores(contribuicoes: np.ndarray, nomes: list[str], k: int = 3) -> list[str]:
-    """Até k fatores que mais AUMENTAM a suspeita (contribuição SHAP > 0), em português, do maior para o menor."""
-    ordem = np.argsort(-np.asarray(contribuicoes, dtype=float))
-    return [ROTULOS.get(nomes[i], nomes[i]) for i in ordem[:k] if contribuicoes[i] > 0]
+def principais_fatores(contribuicoes: np.ndarray, nomes: list[str], valores: pd.Series, k: int = 3) -> list[str]:
+    """Até k fatores que mais AUMENTAM a suspeita, em português: contribuição SHAP ≥ CONTRIBUICAO_MINIMA e valor da
+    feature que justifica a frase. Valor nulo nunca vira fator."""
+    contribuicoes = np.asarray(contribuicoes, dtype=float)
+    fatores = []
+    for i in np.argsort(-contribuicoes, kind="stable"):
+        if contribuicoes[i] < CONTRIBUICAO_MINIMA or len(fatores) == k:
+            break
+        regra, valor = _FATORES.get(nomes[i]), valores.get(nomes[i])
+        if regra is None or valor is None or pd.isna(valor):
+            continue
+        frase = regra(float(valor))
+        if frase and frase not in fatores:
+            fatores.append(frase)
+    return fatores

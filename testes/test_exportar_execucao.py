@@ -25,7 +25,7 @@ def test_extrai_o_modelo_do_html_exportado():
 
 
 def test_limpa_ansi_e_oculta_host_e_email():
-    texto = limpar_texto("\x1b[94mhttps://fevm-x.cloud.databricks.com/jobs/1\x1b[0m de joao.silva@empresa.com")
+    texto = limpar_texto("\x1b[94mhttps://fevm-x.cloud.databricks.com/jobs/1?o=7474657549414280\x1b[0m de joao.silva@empresa.com")
     assert texto == "<workspace>/jobs/1 de <e-mail>"
 
 

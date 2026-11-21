@@ -33,7 +33,7 @@
   - raio de 30 km;
   - janela de D−1 a D+1.
 - **Evidência climática (D-015):** `forte` quando o INMET (a até 30 km, com sinal) **ou** a Defesa Civil (registro no município dentro da janela) confirmam; `contraria` quando há estação válida a até 30 km sem sinal **e** não há registro da Defesa Civil; nos demais casos, `fraca`.
-- **Commits:** terminam com a linha `Co-authored-by: Isaac <no-reply@databricks.com>`. Autor: `-c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com"`. **Nenhum push** sem autorização do autor.
+- **Commits:** terminam com a linha `Co-authored-by: Isaac <no-reply@databricks.com>`. Autor: `-c user.name="<autor>" -c user.email="<e-mail do autor>"`. **Nenhum push** sem autorização do autor.
 - **Organização:** depois de cada tarefa, atualizar a tabela de status do `README.md` quando mudar e registrar decisões novas em `docs/decisoes-e-tradeoffs.md`. No fim de cada fase, atualizar a memória do projeto.
 
 ## Foco de revisão
@@ -56,7 +56,7 @@
 **Interfaces:**
 - Produz: o profile `fe-bar` em `~/.databrickscfg`, a URL do workspace e o ID do SQL Warehouse serverless em `FE_BAR_WAREHOUSE_ID`.
 
-- [ ] **Passo 1: autenticar o MCP do FEVM.** O usuário roda `/mcp`, seleciona `fe-vending-machine` e escolhe **Authenticate**. Se a primeira chamada devolver `-32042`, o usuário abre uma vez `https://gtm-ai-agent.cloud.databricks.com/explore/data/mcp-services/gtm_ai_agent_7474646471015793/ai_agent_resources/gtm_ai_fevm_mcp?o=7474646471015793`, faz o login e tenta de novo.
+- [ ] **Passo 1: autenticar o MCP do FEVM.** O usuário roda `/mcp`, seleciona `fe-vending-machine` e escolhe **Authenticate**. Se a primeira chamada devolver `-32042`, o usuário abre uma vez o recurso do MCP do FEVM no workspace interno de GTM (link interno omitido), faz o login e tenta de novo.
 
 - [ ] **Passo 2: criar o deployment pela skill `fe-ai-tools:fevm`** com os seguintes parâmetros:
   - nuvem **AWS**, região **us-west-2**;
@@ -75,7 +75,7 @@ Esperado: o navegador abre, o login é concluído e aparece `Profile fe-bar was 
 - [ ] **Passo 4: verificar o acesso.**
 
 Comando: `databricks current-user me -p fe-bar -o json | python3 -c "import json,sys;print(json.load(sys.stdin)['userName'])"`
-Esperado: `gilson.reis@databricks.com`
+Esperado: o e-mail do autor
 
 - [ ] **Passo 5: descobrir o SQL Warehouse serverless.**
 
@@ -105,7 +105,7 @@ Criar também o `.env` local com os valores reais.
 
 ```bash
 git add .env.exemplo README.md
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "chore: ambiente FEVM e variáveis locais
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "chore: ambiente FEVM e variáveis locais
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -187,7 +187,7 @@ Esperado: `1 passed`
 
 ```bash
 git add pyproject.toml .python-version uv.lock src testes .gitignore
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "chore: projeto Python com uv e pytest
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "chore: projeto Python com uv e pytest
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -349,7 +349,7 @@ Em um workspace com permissão de CREATE CATALOG, rode antes `00_catalogo_opcion
 
 ```bash
 git add pyproject.toml src/ambiente scripts/executar_sql.py src/governanca testes/test_config_ambiente.py testes/test_executar_sql.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: nomes de catálogo e schemas parametrizados, executor de SQL e criação dos schemas
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: nomes de catálogo e schemas parametrizados, executor de SQL e criação dos schemas
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -526,7 +526,7 @@ Esperado: a tabela impressa e gravada em `evidencias/00a-verificacoes-ambiente.m
 
 ```bash
 git add scripts/verificar_recursos.py testes/test_verificar_recursos.py evidencias/00a-verificacoes-ambiente.md docs/decisoes-e-tradeoffs.md
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: verificação dos recursos do workspace e decisões resultantes
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: verificação dos recursos do workspace e decisões resultantes
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -586,7 +586,7 @@ Esperado: `Validation OK!`
 
 ```bash
 git add databricks.yml recursos/README.md
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "chore: esqueleto do bundle com target dev
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "chore: esqueleto do bundle com target dev
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -843,7 +843,7 @@ Esperado: todos os testes passam (23).
 
 ```bash
 git add src/regras/clima.py testes/test_regras_clima.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: regras climáticas e evidência de duas fontes (INMET + Defesa Civil)
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: regras climáticas e evidência de duas fontes (INMET + Defesa Civil)
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1038,7 +1038,7 @@ Esperado: `5 passed`
 
 ```bash
 git add src/dados_sinteticos/inmet.py testes/test_inmet.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: leitor do INMET e agregação diária com indicador de granizo provável
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: leitor do INMET e agregação diária com indicador de granizo provável
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1281,7 +1281,7 @@ Esperado: `3 passed`
 
 ```bash
 git add dados/publicos/defesa_civil_sc_2026.csv dados/publicos/FONTES.md src/dados_sinteticos/config.py src/dados_sinteticos/publicos.py testes/test_publicos.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: dados curados da Defesa Civil, configuração do gerador e leitores públicos
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: dados curados da Defesa Civil, configuração do gerador e leitores públicos
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1393,7 +1393,7 @@ Pequenas diferenças na chuva são esperadas, porque os dias com menos de 12 hor
 
 ```bash
 git add scripts/preparar_dados_publicos.py dados/publicos/
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: preparação dos dados públicos (INMET 2025/2026 e municípios de SC)
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: preparação dos dados públicos (INMET 2025/2026 e municípios de SC)
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1511,7 +1511,7 @@ Esperado: `2 passed`
 
 ```bash
 git add src/dados_sinteticos/precos.py testes/test_precos.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: tabela de preços de referência (210 itens)
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: tabela de preços de referência (210 itens)
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1718,7 +1718,7 @@ Esperado: `4 passed`
 
 ```bash
 git add src/dados_sinteticos/cadastros.py testes/test_cadastros.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: cadastros sintéticos de corretores, prestadores, segurados e apólices
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: cadastros sintéticos de corretores, prestadores, segurados e apólices
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -1894,7 +1894,7 @@ Esperado: `4 passed`. Se a extração de "Orçamento" falhar no layout de tabela
 
 ```bash
 git add src/dados_sinteticos/documentos.py testes/test_documentos.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: textos livres e PDFs de orçamento e laudo
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: textos livres e PDFs de orçamento e laudo
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -2421,7 +2421,7 @@ Esperado: todos os testes passam.
 
 ```bash
 git add src/dados_sinteticos/sinistros.py testes/conftest.py testes/test_sinistros.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: gerador de sinistros (histórico 2025 e evento 2026) com gabarito
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: gerador de sinistros (histórico 2025 e evento 2026) com gabarito
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -2726,7 +2726,7 @@ Se o percentual de evidência forte ficar abaixo de 80%, ou o ticket médio sair
 
 ```bash
 git add src/dados_sinteticos/gerar.py testes/test_gerar.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: orquestração da geração com lotes, PDFs, resumo e amostras
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: orquestração da geração com lotes, PDFs, resumo e amostras
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -2859,7 +2859,7 @@ Esperado: `2 passed`
 
 ```bash
 git add scripts/simular_evento.py testes/test_simular_evento.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: publicação idempotente dos lotes do evento no Volume
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: publicação idempotente dos lotes do evento no Volume
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -2930,7 +2930,7 @@ Esperado:
 
 ```bash
 git add evidencias/00b-geracao-dados.md dados/amostras/amostra_avisos.md src/governanca/90_conferir_volume.sql README.md docs/decisoes-e-tradeoffs.md
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: geração completa dos dados e envio da base ao Volume
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: geração completa dos dados e envio da base ao Volume
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```

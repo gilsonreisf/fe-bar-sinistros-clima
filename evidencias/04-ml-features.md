@@ -1,6 +1,6 @@
 # Features do modelo de suspeita: histórico 2025 e lote 1 do evento
 
-Executado em 2026-11-20 23:34 com `uv run python scripts/registrar_evidencia.py src/governanca/93_conferir_features.sql` (catálogo e schemas lidos do `.env`; D-016).
+Executado em 2026-11-21 00:10 com `uv run python scripts/registrar_evidencia.py src/governanca/93_conferir_features.sql` (catálogo e schemas lidos do `.env`; D-016).
 
 ## Consulta 1
 
