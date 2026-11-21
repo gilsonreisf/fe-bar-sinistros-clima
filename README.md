@@ -16,7 +16,8 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | Build: fase 1 (dados) | ✅ Concluída (`evidencias/00b-geracao-dados.md`, `evidencias/00c-conferencia-volume.md`) |
 | Build: fase 2 (pipeline bronze e silver) | ✅ Concluída com o lote 1 (`evidencias/01-ingestao.md`); custo em `evidencias/09-custo-real.md` aguarda o faturamento |
 | Build: fase 3 (modelo de suspeita) | ✅ LightGBM no UC com alias `champion`. Teste de 2025: AUC de 0,997 contra 0,960 da linha de base de regras, e 55% menos suspeitos liberados no fast track. Lote 1 do evento: AUC de 0,983 (`evidencias/04-ml.md`, D-021) |
-| Evidências de execução | ⏳ Pendente |
+| Build: fase 4 (parecer prévio por IA) | ✅ Prompt v2: 95,1% de recomendações corretas (contra 66,4% do v1) e 100% dos valores a ±10%. Endpoint com AI Gateway e tracing (`evidencias/05-*.md`, D-022) |
+| Evidências de execução | 🔄 Fases 1 a 4 em `evidencias/` |
 | Deck de apresentação | ⏳ Pendente |
 | Ensaio do roleplay | ⏳ Pendente |
 
@@ -37,6 +38,8 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | `src/ambiente/` | Nomes do catálogo, dos schemas e dos volumes, lidos do `.env` (nada fixo no código; D-016) |
 | `src/regras/` | Regras de negócio compartilhadas pelo gerador, pelo pipeline e pelo modelo (clima, evidência de duas fontes e features do modelo de suspeita) |
 | `src/ml/` | Treino, métricas e portão de promoção do modelo de suspeita, e o modelo MLflow servido (*models from code*) |
+| `src/parecer/` | Parecer prévio por IA: cláusulas, prompts v1/v2, validação do JSON, valor calculado em código, avaliação, modelo servido e endpoint |
+| `src/gold/` | Camada gold: sinistros analisados (score + parecer + fast track + prioridade), fila e KPIs |
 | `src/dados_sinteticos/` | Leitores dos dados públicos, gerador sintético (cadastros, histórico, evento, PDFs) e gabarito |
 | `src/pipeline/` | Pipeline Lakeflow (SDP): bronze com Auto Loader e silver com `ai_parse_document`, `ai_extract`, cruzamentos, evidência climática e as features do histórico de treino |
 | `notebooks/` | Notebooks executados como jobs (fonte `.py`); em `notebooks/saidas/`, a execução com as saídas em texto (`.ipynb`) |

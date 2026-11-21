@@ -388,3 +388,69 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
   - A precisão nos 10% do topo é trivial quando a prevalência passa de 10%. O que importa é o vazamento na população do fast track e a comparação com a regra.
 
 **Evidências:** `evidencias/04-ml.md`, `evidencias/04-ml-features.md` e `notebooks/saidas/treino_modelo_suspeita.ipynb`.
+
+## D-022: Parecer prévio por IA, avaliação com MLflow e endpoint (fase 4)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a spec 6.2 e 6.4 pede:
+- parecer em JSON validado;
+- prompt versionado;
+- avaliação v1 × v2 com `mlflow.genai.evaluate`, métricas de código e juízes;
+- portão de qualidade;
+- modelo servido com tracing e AI Gateway.
+
+O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os rulings, em `_interno/execucao/ledger-fase-4.md`.
+
+**Fatos verificados que mudaram o desenho:**
+- **Saída estruturada:** `databricks-claude-sonnet-5-5` não aceita `response_format` com `json_schema` nem `temperature`, e devolve o conteúdo como uma lista de partes (raciocínio + texto).
+  - O JSON sai pelo prompt e é validado em código (spec 10.3), com uma nova tentativa.
+  - Sem `temperature`, há variação entre execuções.
+- **Prompt Registry indisponível:** não está habilitado no FEVM (`FEATURE_DISABLED`), e não há API ou CLI de prévias. **Plano B:** os prompts são versionados numa tabela Delta do UC (`ml.prompt_parecer`), com as mesmas operações:
+  - versão nova só quando o texto muda (sha256);
+  - alias `producao` único;
+  - métrica por versão;
+  - o histórico Delta serve de auditoria.
+  - O texto de cada prompt também vai como artefato de cada run. A troca pelo Registry é localizada.
+- **Evaluation Dataset no UC:** `mlflow.genai.datasets` no Databricks não aceita tags e delega ao `databricks-agents`, que entrou nas dependências do job.
+
+**Escolhas:**
+- **O LLM decide, o código calcula.**
+  - O LLM devolve a recomendação e a **base do valor** (`reclamado`, `tabela_referencia`, `itens_validos` com os itens excluídos, ou `zero`).
+  - O código aplica franquia, LMI e soma dos itens. Resultado: 100% dos valores dentro de ±10% do devido no v2.
+- **Entrada única:** `silver.entrada_parecer` (MV do pipeline) monta o JSON de cada sinistro. Os mesmos dados servem a avaliação, o lote e o app. O score e os fatores do modelo de suspeita entram na entrada (integração ML → GenAI).
+- **Cláusulas sintéticas** (`src/parecer/clausulas.py`): o parecer cita códigos (CG-x.y) que o regulador confere. Não há texto real de apólice.
+- **Prompt v2 = regras explícitas, em ordem, com exemplos:**
+  - as regras específicas (laudo de dano anterior e preço acima da tabela) vêm antes da regra de apólice recente;
+  - essa ordem veio de um teste de fumaça com 8 sinistros reais, um por padrão, e há risco pequeno de sobreajuste.
+- **Juízes e métricas:**
+  - **Métricas de código:** `recomendacao_correta`, `json_valido`, `padrao_identificado` e `cita_clausula`.
+  - **Juízes:** `Correctness` (fatos esperados por padrão) e `Guidelines` (português formal, não recusar sem evidência, citar o fundamento, tom).
+  - **Valor:** a métrica é calculada fora dos scorers, só nos casos com pagamento esperado.
+- **Portão:** `producao` vai para a versão com a maior `recomendacao_correta`, desde que não fique abaixo da versão de produção atual.
+- **Modelo e endpoint:**
+  - `ml.parecer_sinistro` (*models from code*) leva o prompt de produção congelado e declara o LLM em `resources` (passthrough de credenciais).
+  - O endpoint `sinistros-clima-parecer-<target>` tem CPU Small, scale-to-zero, AI Gateway (inference table `ml.parecer_payload` e usage tracking) e tracing no experimento do parecer.
+  - É publicado pelo próprio job depois do portão: a versão só existe depois da avaliação, e no DAB isso exigiria um deploy em dois passos.
+
+**Resultado** (143 casos estratificados do lote 1, Claude Sonnet 5.5):
+
+| métrica | v1 (básico) | v2 (regras e exemplos) |
+|---|---|---|
+| recomendação correta | 66,4% | **95,1%** |
+| JSON válido | 98,6% | 100% |
+| motivos citam o fato do padrão | 89,5% | 99,3% |
+| cita a cláusula esperada | 95,1% | 95,1% |
+| valor a ±10% do devido (84 pagamentos) | 58,3% | **100%** |
+| juiz Correctness | 66,4% | 93,0% |
+| juiz Guidelines | 68,5% | 92,3% |
+
+- **As 7 divergências do v2:**
+  - 5 `prestador_concentrado`: o lote 1 ainda não tem histórico do prestador, o mesmo limite do modelo (D-021).
+  - 1 legítimo com apólice de 19 dias, que vai para `investigar` por política (CG-2.4).
+  - 1 `sem_evento_climatico` com evidência "fraca": pela regra, a falta de dado não justifica investigação.
+- **Endpoint testado ponta a ponta** (`evidencias/05-endpoint-parecer.md`): três pareceres corretos, de 5 a 7 s cada, com os traces encontrados no experimento e a inference table criada.
+  - O parecer aponta inconsistências que regra fixa não pega. Exemplo: "19 roteadores não mencionados na descrição; recomenda-se conferir".
+- **Custo medido por token:** ~3,2 mil tokens de entrada e ~950 de saída por parecer (o raciocínio pesa). Pela referência de preço do Sonnet, isso dá cerca de US$ 0,02 por parecer, um valor de referência a confirmar no faturamento (`09-custo-real.md`).
+
+**Evidências:** `evidencias/05-avaliacao-genai.md`, `evidencias/05-endpoint-parecer.md` e `notebooks/saidas/avaliacao_parecer.ipynb`.
