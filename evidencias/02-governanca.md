@@ -1,6 +1,6 @@
 # Governança no Unity Catalog: LGPD, máscara do CPF, comentários e lineage
 
-Executado em 2026-11-21 09:50 com `uv run python scripts/registrar_evidencia.py src/governanca/95_governanca.sql` (catálogo e schemas lidos do `.env`; D-016).
+Executado em 2026-11-21 11:16 com `uv run python scripts/registrar_evidencia.py src/governanca/95_governanca.sql` (catálogo e schemas lidos do `.env`; D-016).
 
 ## Consulta 1
 
@@ -146,9 +146,11 @@ ORDER BY table_schema, table_name
 |---|---|---|---|
 | gold | fila_regulacao | VIEW | true |
 | gold | kpis_evento | VIEW | true |
+| gold | regulacao_metrics | METRIC_VIEW | true |
 | gold | sinistro_detalhe | VIEW | true |
 | gold | sinistros_analisados | MANAGED | true |
 | gold | sinistros_analisados_lb | FOREIGN | true |
+| gold | sinistros_metrics | METRIC_VIEW | true |
 | ml | avaliacao_parecer_dataset | MANAGED | true |
 | ml | features_treino | MANAGED | true |
 | ml | parecer_payload | MANAGED | true |
@@ -183,8 +185,17 @@ ORDER BY destino, origem
 | origem | destino | por |
 |---|---|---|
 | fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.fila_regulacao | JOB |
+| fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.fila_regulacao |  |
 | fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.fila_regulacao | JOB |
+| fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.fila_regulacao |  |
 | fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.kpis_evento | JOB |
+| fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.kpis_evento |  |
+| fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.kpis_evento |  |
+| fe_bar_sinistros_catalog.operacional.lb_decisoes_regulador_history | fe_bar_sinistros_catalog.gold.regulacao_metrics |  |
 | fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.sinistro_detalhe | JOB |
+| fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.sinistro_detalhe |  |
 | fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.sinistro_detalhe | JOB |
+| fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.sinistro_detalhe |  |
 | fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.sinistros_analisados_lb | PIPELINE |
+| fe_bar_sinistros_catalog.gold.sinistros_analisados | fe_bar_sinistros_catalog.gold.sinistros_metrics |  |
+| fe_bar_sinistros_catalog.silver.sinistros_enriquecidos | fe_bar_sinistros_catalog.gold.sinistros_metrics |  |
