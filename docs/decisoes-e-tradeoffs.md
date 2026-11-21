@@ -484,6 +484,7 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - **Gold:** `gold.sinistros_analisados` (Change Data Feed ligado, para a synced table do Lakebase) e as visões `fila_regulacao`, `kpis_evento` e `sinistro_detalhe`, recriadas pelo notebook a partir de uma função pura.
 
 **Vazão e cobertura (fato medido):**
+- O pipeline levou os 10 lotes (8.000 avisos e 9.705 PDFs) à silver em cerca de 26 minutos.
 - O FMAPI limita o lote a ~21 pareceres por minuto, mesmo com 16 chamadas em paralelo.
 - A 1ª execução completa estourou o timeout de 3 h com 3.220 de 8.000 pareceres. O timeout subiu para 6 h, e uma nova execução incremental continuou sem repetir os pareceres `ok`.
 - A cobertura final está em `evidencias/05c-gold.md`. **Em produção**, a vazão pede throughput provisionado (ou um endpoint dedicado) para o LLM do lote. Isso é dimensionamento, a calibrar na PoC.
