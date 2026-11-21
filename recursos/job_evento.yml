@@ -30,7 +30,7 @@ resources:
               schema_ml: ${var.prefixo_schema}ml
               experimento_parecer: /Shared/${bundle.name}/${bundle.target}/parecer_sinistro
               llm_lote: ${var.llm_lote}
-              paralelo: "8"
+              paralelo: "16"
               max_tentativas: "3"
               bloco: "200"
       environments:
