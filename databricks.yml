@@ -4,6 +4,10 @@ bundle:
 include:
   - recursos/*.yml
 
+sync:
+  exclude:
+    - app/** # o app tem bundle próprio (app/databricks.yml; D-026)
+
 variables:
   catalogo:
     description: Catálogo do Unity Catalog do projeto

@@ -37,6 +37,8 @@ def renderizar(quando: str, r: dict) -> str:
          "## 1. Dois reguladores assumindo ao mesmo tempo", "",
          f"- {r['pedidos']} pedidos simultâneos de \"Assumir próximo\" ({r['rodadas']} rodadas × 2 reguladores).",
          f"- Sinistros entregues: {r['entregues']}; distintos: {r['distintos']}; repetidos: **{r['entregues'] - r['distintos']}**.",
+         f"- Pedidos sem caso: {r['pedidos'] - r['entregues']}. Na corrida pelo mesmo sinistro, a PK barra o segundo "
+         "regulador, que volta sem caso em vez de duplicar; o app tenta o próximo até 3 vezes.",
          "", "## 2. Decisão com clique duplo", "",
          f"- {r['decisoes_enviadas']} envios (cada decisão enviada duas vezes com o mesmo `id_decisao`); linhas gravadas: "
          f"**{r['decisoes_gravadas']}**.",

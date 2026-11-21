@@ -89,6 +89,17 @@ async function entradaDoParecer(idAviso: string) {
   return { entrada_json: linha[0], score_suspeita: linha[1] === null ? null : Number(linha[1]), fatores_suspeita: linha[2] };
 }
 
+/** Na partida, registra no log se a identidade do app lê a fila e o schema operacao (confere as permissões do deploy). */
+async function verificarAcesso(appkit: AppKitComLakebase) {
+  try {
+    const { rows } = await appkit.lakebase.query(
+      `SELECT (SELECT count(*) FROM ${FILA_PG}) AS fila, (SELECT count(*) FROM operacao.decisoes_regulador) AS decisoes`);
+    console.log(`[verificacao] Lakebase ok: ${JSON.stringify(rows[0])}`);
+  } catch (err) {
+    console.error('[verificacao] Lakebase sem acesso (rode scripts/permissoes_app.py):', (err as Error).message);
+  }
+}
+
 function rotas(appkit: AppKitComLakebase) {
   appkit.server.extend((app) => {
     app.get('/api/config', (req, res) => {
@@ -112,8 +123,14 @@ function rotas(appkit: AppKitComLakebase) {
 
     app.post('/api/fila/assumir', async (req, res) => {
       try {
-        const { rows } = await appkit.lakebase.query(SQL_ASSUMIR, [regulador(req)]);
-        res.json({ id_aviso: rows[0]?.id_aviso ?? null });
+        // Na corrida com outro regulador pelo mesmo caso, a PK barra o segundo e ele volta vazio: tenta o próximo
+        // (até 3 vezes) em vez de devolver "fila vazia" (medido em evidencias/03-lakebase.md).
+        let id: unknown = null;
+        for (let tentativa = 0; tentativa < 3 && !id; tentativa++) {
+          const { rows } = await appkit.lakebase.query(SQL_ASSUMIR, [regulador(req)]);
+          id = rows[0]?.id_aviso ?? null;
+        }
+        res.json({ id_aviso: id });
       } catch (err) {
         console.error('[fila] falha ao assumir:', err);
         res.status(503).json({ error: 'Não foi possível assumir um sinistro agora.' });
@@ -193,6 +210,7 @@ createApp({
   plugins: [analytics(), lakebase(), server(), serving()],
   onPluginsReady(appkit) {
     rotas(appkit);
+    void verificarAcesso(appkit);
     return Promise.resolve();
   },
 }).catch(console.error);

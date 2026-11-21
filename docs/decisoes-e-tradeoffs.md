@@ -510,3 +510,60 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - **Laço de retorno:** as decisões do regulador chegam ao UC e alimentam a tela de concordância IA × regulador do app. **O retreino** do modelo e do prompt com essas decisões **fica como próximo passo** (corte aceito pelo autor para caber no prazo).
 
 **Evidência:** `evidencias/03-lakebase.md` (dois reguladores assumindo ao mesmo tempo sem repetição, clique duplo sem duplicata e decisões lidas de volta no UC).
+
+## D-025: Governança enxuta, metric views e Genie da diretoria (fase 7)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma, dentro do escopo combinado com o autor (governança enxuta, ~20 min).
+
+**Contexto:** o FE Bar pede "Unity Catalog — govern it". Máscaras e LGPD não são requisito explícito, mas um avaliador de seguros espera ver o dado pessoal tratado.
+
+**Escolhas:**
+- **Dado pessoal marcado e mascarado na camada de consumo:**
+  - tag `classificacao_lgpd = dado_pessoal` nas colunas pessoais do bronze e da silver (CPF, nome, telefone, e-mail) e no CPF da visão de detalhe (`src/governanca/95_governanca.sql`);
+  - função `gold.mascarar_cpf`: CPF completo só para o grupo `regulacao_sinistros` (constante em `gold.visoes`), os demais veem `***.123.***-**`;
+  - a visão `gold.sinistro_detalhe`, a única de consumo com CPF, aplica a função. A função e a tag são criadas por `ddl_gold`, junto com as visões, e o job do evento as recria a cada execução.
+- **Por que visão dinâmica, e não máscara de coluna nas tabelas do pipeline:** o pipeline roda com a identidade do dono, que não está no grupo da regulação. Uma máscara na silver chegaria mascarada aos cruzamentos do próprio pipeline e quebraria as junções por CPF. Quem consome (app, Genie, analistas) lê só o gold.
+- **Ficaram de fora** (corte combinado): filtro de linha, grupos de personas e ABAC. Em produção, o grupo `regulacao_sinistros` e uma política ABAC por tag fariam a mesma coisa de forma centralizada.
+- **Comentários:** todas as tabelas, visões e funções do silver, do gold, do ml e do operacional têm comentário, inclusive as criadas pela plataforma (inference table e histórico do Lakehouse Sync).
+- **Lineage:** o capturado pelo UC está em `evidencias/02-governanca.md`. Mostra pipeline → silver → gold (job) → synced table do Lakebase (pipeline).
+- **Metric views** (`src/governanca/96_metric_views.sql`) definem as métricas de negócio uma vez só: `gold.sinistros_metrics` (exposição, fast track, suspeita, ajuste sugerido pela IA) e `gold.regulacao_metrics` (concordância do regulador com a IA). O Genie e o app usam as mesmas definições, então o número da diretoria é o mesmo número da tela do coordenador.
+- **Genie "Sinistros Clima — Diretoria"** (`scripts/genie_diretoria.py`):
+  - fontes: as duas metric views e `gold.fila_regulacao` (para listar casos);
+  - 8 instruções de negócio (fast track, suspeito, "economia" sempre como ajuste sugerido, sem dado pessoal);
+  - 3 exemplos de SQL, diferentes dos benchmarks;
+  - 16 benchmarks.
+  - **Resultado: 16 de 16 corretos** (`evidencias/06-genie.md`). Na 1ª rodada foram 13 de 16. Dois benchmarks tinham SQL de referência com colunas a mais e foram corrigidos; o terceiro ganhou a instrução de "top N" com `LIMIT` em vez de `RANK`.
+  - Os IDs dos itens são estáveis (hash do texto), e reaplicar o script atualiza o espaço sem duplicar nada.
+
+**Riscos:**
+- O grupo `regulacao_sinistros` não existe no FEVM, então hoje ninguém vê o CPF completo.
+- Os benchmarks rodaram com o gold ainda crescendo (parecer em lote em andamento). Os resultados do SQL gerado e do de referência são comparados na mesma hora, então isso não distorce a nota.
+
+## D-026: App da regulação com AppKit (fase 8)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; o desenho de 4 telas e o Genie como espaço próprio foram combinados com o autor.
+
+**Escolhas:**
+- **AppKit** (Node + React; `app/`), com bundle próprio (`app/databricks.yml`), porque o build Node é separado do wheel Python. O bundle principal exclui `app/` do sync.
+- **Quatro telas, cada uma com a fonte certa:**
+  - **Painel do evento:** metric view no SQL Warehouse. É leitura analítica com agregação.
+  - **Fila do regulador:** Lakebase. Leitura de baixa latência na synced table e "Assumir próximo" transacional.
+  - **Detalhe:** a visão de detalhe vem do warehouse, com o CPF mascarado; a decisão e a reanálise vão ao Lakebase; "Reanalisar com IA" chama o endpoint do parecer, com AI Gateway, tracing e Sonnet.
+  - **IA sob supervisão:** metric view sobre o histórico que voltou pelo Lakehouse Sync. Aqui o laço de retorno fica visível.
+- **Nada fixo no código (D-016):**
+  - as consultas ficam em `app/consultas/*.sql`, com `${catalogo}`;
+  - `npm run consultas` gera `config/queries/` a partir do ambiente (`FE_BAR_CATALOGO`). As consultas geradas ficam fora do git e entram no deploy pelo `sync.include` do bundle;
+  - o servidor lê catálogo e prefixo de variáveis de ambiente e valida os identificadores.
+- **"Reanalisar com IA" busca a entrada no servidor**, com consulta parametrizada à `silver.entrada_parecer` usando a identidade do app. A entrada não vem do navegador, então o cliente não consegue adulterar o que vai para o LLM.
+- **Decisão idempotente:** o `id_decisao` (UUID) nasce no navegador, um por formulário, e o duplo clique grava uma linha só (testado). O motivo é obrigatório.
+- **Identidade:** o regulador é o e-mail repassado pelo Databricks Apps (`x-forwarded-email`). As consultas e a escrita usam o service principal do app, com permissões mínimas (`scripts/permissoes_app.py`):
+  - no UC, leitura só das visões e metric views do gold e da entrada do parecer, mais EXECUTE na máscara;
+  - no Postgres, leitura da synced table e escrita só em `operacao`, sem DELETE.
+- **Estados de tela:** carregamento (Skeleton), vazio, erro com mensagem útil (por exemplo, o endpoint acordando do scale-to-zero) e a fonte de cada número.
+
+**Fatos medidos e limites:**
+- O deploy rejeita variável de ambiente vazia, então o prefixo de schema só entra no `config` do app quando existe.
+- A DataTable do AppKit descartava colunas com acento, e as tabelas foram trocadas por um componente próprio.
+- O JSON do warehouse traz booleanos como texto, por isso há o conversor `verdadeiro()`.
+- O app publicado exige login com MFA. Os testes de interface rodaram com `npm run dev` contra os mesmos recursos (warehouse, Lakebase e endpoint).
+- O deploy foi validado pelo estado RUNNING e pelos logs: o build remoto descreve as 8 consultas com a identidade do app.
