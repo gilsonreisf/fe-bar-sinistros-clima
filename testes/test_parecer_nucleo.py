@@ -141,3 +141,18 @@ def test_recusa_nunca_paga_e_entrada_minima_funciona():
     p = gerar_parecer({"aviso": {"valor_reclamado": 2000.0}}, PROMPTS["v1"],
                       lambda _: _resposta(recomendacao="recusar", base_valor="reclamado"), "1")
     assert p["recomendacao"] == "recusar" and p["valor_sugerido"] == 0.0
+
+
+def test_chamada_ao_llm_extrai_so_o_texto_das_partes_de_raciocinio():
+    """Claude 5.5 no FMAPI devolve content como lista de partes (reasoning + text): só o texto vale (fumaça real)."""
+    from types import SimpleNamespace
+
+    from parecer.gerar import chamar_llm_databricks, texto_da_resposta
+
+    partes = [{"type": "reasoning", "summary": [{"type": "summary_text", "text": "", "signature": "abc"}]},
+              {"type": "text", "text": '{"a": 1}'}]
+    assert texto_da_resposta(partes) == '{"a": 1}' and texto_da_resposta("puro") == "puro"
+    assert texto_da_resposta(None) == ""
+    resposta = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=partes))])
+    cliente = SimpleNamespace(serving_endpoints=SimpleNamespace(query=lambda **kw: resposta))
+    assert chamar_llm_databricks("x", cliente=cliente)("prompt") == '{"a": 1}'

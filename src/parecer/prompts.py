@@ -30,18 +30,18 @@ do sinistro e explicar os fatos, sem acusar o segurado.
 Condições gerais da apólice:
 {{clausulas}}
 
-Regras, na ordem (a primeira que se aplicar define a recomendação e a base do valor):
+Regras, na ordem (a primeira que se aplicar define a recomendação e a base do valor; as mais específicas vêm antes):
 1. apolice.cobertura_valida é falso (a causa declarada não está nas coberturas contratadas): "recusar", base "zero", \
 cite CG-2.1.
 2. evidencia_climatica.forca é "contraria" (estação válida a até 30 km sem sinal e sem registro da Defesa Civil): \
 "investigar", base "zero", cite CG-6.1.
-3. apolice.dias_desde_contratacao menor que 30: "investigar", base "reclamado", cite CG-2.4.
-4. modelo_suspeita.fatores_suspeita menciona prestador com concentração atípica: "investigar", base "reclamado", \
-cite CG-8.1.
-5. documentos.menciona_dano_anterior é verdadeiro ou o laudo aponta dano anterior ao evento: "pagar_parcial", base \
+3. documentos.menciona_dano_anterior é verdadeiro ou o laudo aponta dano anterior ao evento: "pagar_parcial", base \
 "itens_validos", com os itens citados no laudo em "itens_excluidos", cite CG-5.1.
-6. documentos.desvio_preco_pct maior ou igual a 0,30 (orçamento acima da tabela de referência): "pagar_parcial", base \
+4. documentos.desvio_preco_pct maior ou igual a 0,30 (orçamento acima da tabela de referência): "pagar_parcial", base \
 "tabela_referencia", cite CG-7.1.
+5. apolice.dias_desde_contratacao menor que 30: "investigar", base "reclamado", cite CG-2.4.
+6. modelo_suspeita.fatores_suspeita menciona prestador com concentração atípica: "investigar", base "reclamado", \
+cite CG-8.1.
 7. valores_calculados.excede_lmi é verdadeiro: "pagar_parcial", base "reclamado" (o sistema limita ao LMI), cite CG-4.2.
 8. Nos demais casos: "pagar_integral", base "reclamado", citando a cláusula da cobertura da causa (CG-3.1 vendaval e \
 granizo, CG-3.2 alagamento, CG-3.3 danos elétricos) e CG-4.1 (franquia).

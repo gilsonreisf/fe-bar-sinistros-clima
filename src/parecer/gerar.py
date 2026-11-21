@@ -58,6 +58,22 @@ def gerar_parecer(entrada: dict, template: str, chamar_llm: Callable[[str], str]
             "erros": erros, "trace_id": mlflow.get_active_trace_id()}
 
 
+def texto_da_resposta(content) -> str:
+    """Texto da mensagem do LLM. Modelos com raciocínio (Claude 5.5 no FMAPI) devolvem uma lista de partes
+    (`reasoning` + `text`); só as partes de texto valem."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    partes = []
+    for parte in content:
+        tipo = parte.get("type") if isinstance(parte, dict) else getattr(parte, "type", None)
+        texto = parte.get("text") if isinstance(parte, dict) else getattr(parte, "text", None)
+        if tipo == "text" and texto:
+            partes.append(texto)
+    return "".join(partes)
+
+
 def chamar_llm_databricks(endpoint: str = LLM_PADRAO, max_tokens: int = 1500, cliente=None) -> Callable[[str], str]:
     """Chamada ao Foundation Model API pelo Databricks SDK: no notebook usa a identidade do job; no endpoint, o
     passthrough declarado em `resources` do modelo (D-022). Sem `temperature`: o modelo não aceita o parâmetro."""
@@ -69,6 +85,6 @@ def chamar_llm_databricks(endpoint: str = LLM_PADRAO, max_tokens: int = 1500, cl
     def chamar(prompt: str) -> str:
         r = w.serving_endpoints.query(name=endpoint, max_tokens=max_tokens,
                                       messages=[ChatMessage(role=ChatMessageRole.USER, content=prompt)])
-        return r.choices[0].message.content
+        return texto_da_resposta(r.choices[0].message.content)
 
     return chamar
