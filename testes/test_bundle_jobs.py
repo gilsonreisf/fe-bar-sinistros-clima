@@ -21,8 +21,9 @@ def test_experimento_em_pasta_compartilhada_e_o_mesmo_no_job():
 def test_job_de_treino_instala_o_wheel_e_fixa_o_lightgbm():
     yml = JOB_TREINO.read_text(encoding="utf-8")
     assert "- ${var.pacote_python}" in yml and "--no-deps" not in yml and "- lightgbm==4.7.0" in yml
+    assert "- mlflow==3.18.0" in yml
     assert 'environment_version: "4"' in yml
-    for parametro in ("catalogo", "schema_silver", "schema_ml", "experimento"):
+    for parametro in ("catalogo", "schema_silver", "schema_ml", "experimento", "lotes_validacao"):
         assert re.search(rf"^\s+{parametro}: ", yml, re.M), parametro
 
 
