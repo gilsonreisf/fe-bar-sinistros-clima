@@ -1,0 +1,17 @@
+.DS_Store
+node_modules/
+client/dist/
+dist/
+build/
+.env
+.databricks/
+.smoke-test/
+test-results/
+playwright-report/
+
+# Auto-generated types (endpoint-specific, varies per developer)
+shared/appkit-types/serving.d.ts
+
+
+# Consultas geradas de consultas/*.sql com o catálogo do ambiente (npm run consultas; D-016)
+config/queries/*.sql
