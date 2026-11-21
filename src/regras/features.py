@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+LIMIAR_FAST_TRACK = 0.2  # spec 6.3: score abaixo disso é condição do fast track (e não há fator a explicar)
 JANELA_PRESTADOR_DIAS = 30  # participação do prestador nos 30 dias anteriores ao aviso (point-in-time; D-020/D-021)
 MIN_AVISOS_JANELA_PRESTADOR = 200  # abaixo disso a proporção é ruído (início do histórico ou do evento) e fica nula
 
@@ -84,6 +85,25 @@ def montar_features(df: pd.DataFrame, com_clima_bruto: bool = False) -> pd.DataF
         for coluna in COLUNAS_CLIMA_BRUTO:
             X[coluna] = _numero(df[coluna])
     return X
+
+
+_TEXTO_OU_BOOLEANO = {"forca_evidencia_climatica", "causa_declarada", "ramo", "cobertura_valida", "menciona_dano_anterior"}
+
+
+def preparar_entrada(df: pd.DataFrame, com_clima_bruto: bool = False) -> pd.DataFrame:
+    """Só as colunas de entrada do modelo servido, com os números em float64 (a assinatura do MLflow recusa int64 em
+    coluna double: o INT do Spark chega como int32 e passa, mas um int64 do pandas, não)."""
+    colunas = COLUNAS_ENTRADA + (COLUNAS_CLIMA_BRUTO if com_clima_bruto else [])
+    faltando = [c for c in colunas if c not in df.columns]
+    if faltando:
+        raise KeyError(f"colunas de entrada ausentes: {', '.join(faltando)}")
+    saida = df[colunas].copy()
+    for coluna in colunas:
+        if coluna not in _TEXTO_OU_BOOLEANO:
+            saida[coluna] = _numero(saida[coluna])
+        else:
+            saida[coluna] = saida[coluna].astype(object).where(saida[coluna].notna(), None)
+    return saida
 
 
 def principais_fatores(contribuicoes: np.ndarray, nomes: list[str], k: int = 3) -> list[str]:

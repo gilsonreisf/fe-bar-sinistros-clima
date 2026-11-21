@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from regras.features import (CATEGORIAS, COLUNAS_ENTRADA, COLUNAS_PROIBIDAS, FEATURES, montar_features,
-                             principais_fatores, rotulo_suspeito)
+                             preparar_entrada, principais_fatores, rotulo_suspeito)
 
 
 def _entrada(**kw):
@@ -71,3 +71,10 @@ def test_booleano_anulavel_do_arrow_e_numpy():
     df["menciona_dano_anterior"] = np.array([True, False, True])
     X = montar_features(df)
     assert X["cobertura_valida"].tolist() == [1.0, 0.0, 0.0] and X["menciona_dano_anterior"].tolist() == [1.0, 0.0, 1.0]
+
+
+def test_preparar_entrada_seleciona_e_tipa_como_a_assinatura():
+    df = _entrada(dias_desde_contratacao=200, extra="x").astype({"dias_desde_contratacao": "int64"})
+    e = preparar_entrada(df)
+    assert list(e.columns) == COLUNAS_ENTRADA and e["dias_desde_contratacao"].dtype == "float64"
+    assert e["cobertura_valida"].dtype == object and e["causa_declarada"].iloc[0] == "granizo"

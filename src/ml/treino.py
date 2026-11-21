@@ -8,10 +8,9 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from regras.features import COLUNAS_CLIMA_BRUTO, COLUNAS_ENTRADA
+from regras.features import COLUNAS_CLIMA_BRUTO, COLUNAS_ENTRADA, LIMIAR_FAST_TRACK
 
 CORTE_TESTE = "2025-10-01"  # treino: jan–set/2025; teste: out–dez/2025 (split temporal)
-LIMIAR_FAST_TRACK = 0.2  # spec 6.3: score abaixo disso é condição do fast track
 FRACAO_TOPO = 0.10  # spec 6.1: precisão e recall nos 10% mais suspeitos
 PARAMS_LGBM = dict(n_estimators=300, learning_rate=0.05, num_leaves=15, min_child_samples=30, subsample=0.8,
                    subsample_freq=1, colsample_bytree=0.8, reg_lambda=1.0, random_state=42, verbose=-1)
