@@ -1,6 +1,6 @@
 # Features do modelo de suspeita: histórico 2025 e lote 1 do evento
 
-Executado em 2026-11-20 23:20 com `uv run python scripts/registrar_evidencia.py src/governanca/93_conferir_features.sql` (catálogo e schemas lidos do `.env`; D-016).
+Executado em 2026-11-20 23:34 com `uv run python scripts/registrar_evidencia.py src/governanca/93_conferir_features.sql` (catálogo e schemas lidos do `.env`; D-016).
 
 ## Consulta 1
 
@@ -37,14 +37,14 @@ GROUP BY g.padrao ORDER BY g.padrao
 
 | padrao | sinistros | pct_forte | pct_fraca | pct_contraria | desvio_mediano | dias_mediano | pct_sem_cobertura | pct_dano_anterior | participacao_mediana_por_mil | pct_participacao_nula |
 |---|---|---|---|---|---|---|---|---|---|---|
-| apolice_recente | 400 | 73.3 | 26.3 | 0.5 | 0.02 | 6.0 | 0.0 | 0.0 | 0.445 | 1.3 |
-| dano_preexistente | 400 | 80.5 | 19.5 | 0.0 | 0.024 | 175.0 | 0.0 | 100.0 | 0.436 | 2.0 |
-| legitimo_complexo | 5000 | 77.1 | 22.7 | 0.2 | 0.021 | 183.0 | 0.0 | 0.0 | 0.416 | 1.1 |
-| legitimo_simples | 12000 | 77.9 | 21.9 | 0.2 | 0.023 | 180.0 | 0.0 | 0.0 | 0.414 | 1.1 |
-| orcamento_inflado | 800 | 76.1 | 23.8 | 0.1 | 0.784 | 178.0 | 0.0 | 0.0 | 0.375 | 1.1 |
-| prestador_concentrado | 200 | 78.0 | 21.5 | 0.5 | 0.019 | 169.5 | 0.0 | 0.0 | 3.247 | 0.5 |
-| sem_cobertura | 600 | 77.3 | 22.7 | 0.0 | 0.022 | 181.5 | 100.0 | 0.0 | 0.4 | 0.8 |
-| sem_evento_climatico | 600 | 0.0 | 4.2 | 95.8 | 0.025 | 183.5 | 0.0 | 0.0 | 0.37 | 0.7 |
+| apolice_recente | 400 | 73.3 | 26.3 | 0.5 | 0.02 | 6.0 | 0.0 | 0.0 | 0.477 | 0.0 |
+| dano_preexistente | 400 | 80.5 | 19.5 | 0.0 | 0.024 | 175.0 | 0.0 | 100.0 | 0.468 | 0.0 |
+| legitimo_complexo | 5000 | 77.1 | 22.7 | 0.2 | 0.021 | 183.0 | 0.0 | 0.0 | 0.459 | 0.0 |
+| legitimo_simples | 12000 | 77.9 | 21.9 | 0.2 | 0.023 | 180.0 | 0.0 | 0.0 | 0.457 | 0.0 |
+| orcamento_inflado | 800 | 76.1 | 23.8 | 0.1 | 0.784 | 178.0 | 0.0 | 0.0 | 0.436 | 0.0 |
+| prestador_concentrado | 200 | 78.0 | 21.5 | 0.5 | 0.019 | 169.5 | 0.0 | 0.0 | 1.737 | 0.0 |
+| sem_cobertura | 600 | 77.3 | 22.7 | 0.0 | 0.022 | 181.5 | 100.0 | 0.0 | 0.453 | 0.0 |
+| sem_evento_climatico | 600 | 0.0 | 4.2 | 95.8 | 0.025 | 183.5 | 0.0 | 0.0 | 0.447 | 0.0 |
 
 ## Consulta 3
 
@@ -67,14 +67,14 @@ GROUP BY g.padrao ORDER BY g.padrao
 
 | padrao | avisos | pct_forte | pct_fraca | pct_contraria | desvio_mediano | dias_mediano | pct_sem_cobertura | pct_dano_anterior | participacao_mediana_por_mil | pct_participacao_nula |
 |---|---|---|---|---|---|---|---|---|---|---|
-| apolice_recente | 13 | 100.0 | 0.0 | 0.0 | -0.003 | 6.0 | 0.0 | 0.0 | 0.0 | 15.4 |
-| dano_preexistente | 9 | 100.0 | 0.0 | 0.0 | -0.005 | 112.0 | 0.0 | 100.0 | 0.0 | 22.2 |
-| legitimo_complexo | 178 | 100.0 | 0.0 | 0.0 | 0.025 | 174.0 | 0.0 | 0.0 | 0.0 | 15.7 |
-| legitimo_simples | 436 | 99.8 | 0.2 | 0.0 | 0.02 | 178.5 | 0.0 | 0.0 | 0.0 | 17.4 |
-| orcamento_inflado | 25 | 100.0 | 0.0 | 0.0 | 0.865 | 169.0 | 0.0 | 0.0 | 0.0 | 28.0 |
-| prestador_concentrado | 5 | 100.0 | 0.0 | 0.0 | -0.026 | 132.0 | 0.0 | 0.0 | 0.0 | 0.0 |
-| sem_cobertura | 16 | 100.0 | 0.0 | 0.0 | -0.004 | 244.5 | 100.0 | 0.0 | 0.0 | 18.8 |
-| sem_evento_climatico | 118 | 0.0 | 2.5 | 97.5 | 0.012 | 147.0 | 0.0 | 0.0 | 0.0 | 75.4 |
+| apolice_recente | 13 | 100.0 | 0.0 | 0.0 | -0.003 | 6.0 | 0.0 | 0.0 | 0.448 | 0.0 |
+| dano_preexistente | 9 | 100.0 | 0.0 | 0.0 | -0.005 | 112.0 | 0.0 | 100.0 | 0.448 | 0.0 |
+| legitimo_complexo | 178 | 100.0 | 0.0 | 0.0 | 0.025 | 174.0 | 0.0 | 0.0 | 0.448 | 0.0 |
+| legitimo_simples | 436 | 99.8 | 0.2 | 0.0 | 0.02 | 178.5 | 0.0 | 0.0 | 0.448 | 0.0 |
+| orcamento_inflado | 25 | 100.0 | 0.0 | 0.0 | 0.865 | 169.0 | 0.0 | 0.0 | 0.448 | 0.0 |
+| prestador_concentrado | 5 | 100.0 | 0.0 | 0.0 | -0.026 | 132.0 | 0.0 | 0.0 | 0.381 | 0.0 |
+| sem_cobertura | 16 | 100.0 | 0.0 | 0.0 | -0.004 | 244.5 | 100.0 | 0.0 | 0.448 | 0.0 |
+| sem_evento_climatico | 118 | 0.0 | 2.5 | 97.5 | 0.012 | 147.0 | 0.0 | 0.0 | 0.466 | 0.0 |
 
 ## Consulta 4
 
