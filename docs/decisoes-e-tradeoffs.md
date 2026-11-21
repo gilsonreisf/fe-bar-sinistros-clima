@@ -313,6 +313,6 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Semântica dos alertas para a fase 5:** `alertas_qualidade` mistura alertas que bloqueiam e alertas informativos.
   - **Informativo:** `sem_estacao_no_raio` (68% do lote 1, a maioria em municípios com registro da Defesa Civil) não bloqueia o fast track quando a evidência é `forte` pela Defesa Civil. A D-015 foi criada justamente para esse caso.
   - **Bloqueiam o fast track:** `apolice_inexistente`, `fora_vigencia`, `datas_incoerentes`, `valor_invalido`, `causa_desconhecida` e as flags `documento_ilegivel`, `extracao_falhou`, `preco_nao_conferido` e `documento_ausente`.
-- **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) ficam **para aprovação do autor**, porque o plano da fase 2 foi executado sem aprovação prévia.
+- **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) foram **aprovados pelo autor em 2026-11-20**, junto com as demais decisões tomadas durante a execução autônoma das fases 1 e 2 (D-016 a D-020).
 
 **Motivo:** fixar essas definições antes do treino e do fast track evita divergência entre treino e serving e mantém a meta de fast track coerente com a regra de duas fontes.
