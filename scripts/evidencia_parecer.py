@@ -63,6 +63,20 @@ def renderizar_evidencia_parecer(quando: str, resultado: dict, por_padrao: dict[
     return "\n".join(p) + "\n"
 
 
+def renderizar_comparacao_llm(quando: str, metricas: dict[str, dict]) -> str:
+    """Mesmo dataset e mesmo prompt (v2), LLMs diferentes: base da escolha do LLM do lote (D-023)."""
+    llms = list(metricas)
+    chaves = sorted({k for m in metricas.values() for k in m}, key=lambda k: (k not in DESCRICAO, k))
+    p = ["# Comparação de LLMs no parecer prévio (mesmo dataset, prompt v2)", "",
+         f"Gerado em {quando} com `uv run python scripts/evidencia_parecer.py comparacao <task_run_id>=<llm> ...`, a "
+         "partir do job de avaliação no modo `publicar=nao` (avalia sem mexer no prompt, no modelo nem no endpoint).", "",
+         "| métrica | o que mede | " + " | ".join(f"`{l}`" for l in llms) + " |", "|---|---|" + "---|" * len(llms)]
+    for k in chaves:
+        p.append(f"| `{k}` | {DESCRICAO.get(k, '')} | "
+                 + " | ".join("" if metricas[l].get(k) is None else f"{metricas[l][k]:.3f}" for l in llms) + " |")
+    return "\n".join(p) + "\n"
+
+
 def main(task_run_id: str, saida: str = "evidencias/05-avaliacao-genai.md") -> None:
     import mlflow
     from databricks.sdk import WorkspaceClient
@@ -88,5 +102,21 @@ def main(task_run_id: str, saida: str = "evidencias/05-avaliacao-genai.md") -> N
     print(f"{saida} gerado ({len(md)} caracteres)")
 
 
+def comparacao(*pares: str, saida: str = "evidencias/05-comparacao-llm.md") -> None:
+    from databricks.sdk import WorkspaceClient
+
+    w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "fe-bar"))
+    metricas = {}
+    for par in pares:
+        run, llm = par.split("=", 1)
+        metricas[llm] = json.loads(w.jobs.get_run_output(int(run)).notebook_output.result)["metricas"]["v2"]
+    md = renderizar_comparacao_llm(datetime.now().strftime("%Y-%m-%d %H:%M"), metricas)
+    (RAIZ / saida).write_text(md, encoding="utf-8")
+    print(md)
+
+
 if __name__ == "__main__":
-    main(*sys.argv[1:])
+    if sys.argv[1:2] == ["comparacao"]:
+        comparacao(*sys.argv[2:])
+    else:
+        main(*sys.argv[1:])

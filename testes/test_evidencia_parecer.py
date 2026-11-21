@@ -2,7 +2,7 @@ import json
 
 import pandas as pd
 
-from evidencia_parecer import renderizar_evidencia_parecer
+from evidencia_parecer import renderizar_comparacao_llm, renderizar_evidencia_parecer
 from testar_endpoint_parecer import renderizar_teste_endpoint
 
 
@@ -30,3 +30,8 @@ def test_evidencia_do_endpoint_mostra_parecer_trace_e_gateway():
                                    [caso], {"tr-1": True}, ["parecer_payload"])
     assert "**pagar_integral**" in md and "R$ 1.784,84" in md and "encontrado no experimento: True" in md
     assert "`parecer_payload`" in md and "Cobertura contratada" in md
+
+
+def test_comparacao_de_llms_lado_a_lado():
+    md = renderizar_comparacao_llm("agora", {"sonnet": {"recomendacao_correta/mean": 0.95}, "haiku": {"recomendacao_correta/mean": 0.94}})
+    assert "| `recomendacao_correta/mean` | recomendação igual à do gabarito | 0.950 | 0.940 |" in md
