@@ -4,7 +4,7 @@
 import { analytics, createApp, createWorkspaceClient, getWarehouseId, lakebase, server, serving } from '@databricks/appkit';
 import type { Application, Request } from 'express';
 import { randomUUID } from 'node:crypto';
-import { Decisao, ID_AVISO, Predicao, consultasLakebase } from './contrato';
+import { Decisao, ID_AVISO, Predicao, consultasLakebase, motivoRecusa } from './contrato';
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const catalogo = process.env.FE_BAR_CATALOGO ?? '';
@@ -38,8 +38,10 @@ async function entradaDoParecer(idAviso: string) {
       JOIN ${catalogo}.${SCHEMA_GOLD}.sinistros_analisados a ON a.id_aviso = e.id_aviso
       WHERE e.id_aviso = :id_aviso`,
     parameters: [{ name: 'id_aviso', value: idAviso, type: 'STRING' }],
-    wait_timeout: '30s',
+    wait_timeout: '50s',
   });
+  // warehouse frio ou sem permissão: erro claro, e não "sinistro sem entrada" (revisão #17)
+  if (r.status?.state !== 'SUCCEEDED') throw new Error(`consulta da entrada: ${r.status?.state ?? 'sem estado'}`);
   const linha = r.result?.data_array?.[0];
   if (!linha) return null;
   return { entrada_json: linha[0], score_suspeita: linha[1] === null ? null : Number(linha[1]), fatores_suspeita: linha[2] };
@@ -83,6 +85,7 @@ function rotas(appkit: AppKitComLakebase) {
         // (até 3 vezes) em vez de devolver "fila vazia" (medido em evidencias/03-lakebase.md).
         let id: unknown = null;
         for (let tentativa = 0; tentativa < 3 && !id; tentativa++) {
+          if (tentativa) await new Promise((ok) => setTimeout(ok, 100 * tentativa));
           const { rows } = await appkit.lakebase.query(SQL.assumir, [regulador(req)]);
           id = rows[0]?.id_aviso ?? null;
         }
@@ -123,14 +126,26 @@ function rotas(appkit: AppKitComLakebase) {
       const quem = regulador(req);
       try {
         const { rows } = await appkit.lakebase.query(SQL.decidir, [d.id_decisao, quem, d.decisao, d.valor_aprovado, d.motivo, id]);
-        await appkit.lakebase.query(
-          `UPDATE operacao.atribuicoes SET status = 'decidido', atualizado_em = now() WHERE id_aviso = $1 AND regulador = $2`,
-          [id, quem]);
-        // rows vazio = a mesma decisão já tinha sido gravada (clique duplo) ou o sinistro não está na fila
-        res.json({ gravada: rows.length > 0, id_decisao: d.id_decisao });
+        if (rows.length > 0) return void res.json({ gravada: true, id_decisao: d.id_decisao });
+        const sit = await appkit.lakebase.query(SQL.situacao, [id]);
+        const r = motivoRecusa(sit.rows[0] as Parameters<typeof motivoRecusa>[0], { ...d, regulador: quem });
+        res.status(r.motivo === 'ja_gravada' ? 200 : 409).json({ gravada: r.motivo === 'ja_gravada', ...r, error: r.mensagem });
       } catch (err) {
         console.error('[decisao] falha ao gravar:', err);
         res.status(503).json({ error: 'Não foi possível gravar a decisão. Nada foi registrado; tente de novo.' });
+      }
+    });
+
+    app.post('/api/sinistros/:id/assumir', async (req, res) => {
+      const id = req.params.id;
+      if (!ID_AVISO.test(id)) return void res.status(400).json({ error: 'id_aviso inválido' });
+      try {
+        const { rows } = await appkit.lakebase.query(SQL.assumirEste, [regulador(req), id]);
+        if (rows.length === 0) return void res.status(409).json({ error: 'Este caso já está com outro regulador ou fora da fila.' });
+        res.json({ id_aviso: id });
+      } catch (err) {
+        console.error('[fila] falha ao assumir este caso:', err);
+        res.status(503).json({ error: 'Não foi possível assumir o caso agora.' });
       }
     });
 

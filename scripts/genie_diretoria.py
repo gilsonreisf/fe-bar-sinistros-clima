@@ -42,8 +42,8 @@ def consultas(catalogo: str, schema_gold: str) -> dict[str, list[tuple[str, str]
          "ORDER BY valor_reclamado DESC LIMIT 5"),
         ("Quantos avisos temos por causa declarada?",
          f"SELECT `Causa declarada`, MEASURE(`Avisos`) AS avisos FROM {sm} GROUP BY ALL ORDER BY avisos DESC"),
-        ("Quanto de pagamento indevido a IA ajudou a evitar?",
-         f"SELECT MEASURE(`Ajuste sugerido pela IA`) AS ajuste_sugerido FROM {sm}"),
+        ("Quanto a IA sugeriu ajustar por evidência nos sinistros com cobertura?",
+         f"SELECT MEASURE(`Ajuste por evidência sugerido pela IA`) AS ajuste_sugerido FROM {sm}"),
         ("Quantos sinistros são suspeitos e quanto eles reclamam?",
          f"SELECT MEASURE(`Sinistros suspeitos`) AS suspeitos, MEASURE(`Valor reclamado suspeito`) AS valor_suspeito "
          f"FROM {sm}"),
@@ -51,8 +51,8 @@ def consultas(catalogo: str, schema_gold: str) -> dict[str, list[tuple[str, str]
          f"SELECT `Recomendação da IA`, MEASURE(`Avisos`) AS avisos FROM {sm} GROUP BY ALL ORDER BY avisos DESC"),
         ("Qual o percentual de fast track em cada lote?",
          f"SELECT `Lote`, MEASURE(`Percentual de fast track`) AS pct_fast_track FROM {sm} GROUP BY ALL ORDER BY `Lote`"),
-        ("Quantos sinistros estão na fila do regulador?",
-         f"SELECT MEASURE(`Na fila do regulador`) AS na_fila FROM {sm}"),
+        ("Quantos sinistros foram encaminhados ao regulador?",
+         f"SELECT MEASURE(`Encaminhados ao regulador`) AS encaminhados FROM {sm}"),
         ("Quanto já foi liberado pelo fast track?",
          f"SELECT MEASURE(`Valor liberado no fast track`) AS valor_liberado FROM {sm}"),
         ("Qual a taxa de concordância dos reguladores com a IA?",
@@ -91,17 +91,20 @@ INSTRUCOES = [
     "MEASURE(`nome da medida`) e agrupe com GROUP BY ALL; nunca use SELECT * nas metric views.",
     "Para 'os N maiores' ou 'top N', ordene pela medida (ORDER BY ... DESC) e use LIMIT N; não use RANK.",
     "Use fila_regulacao só para listar sinistros um a um (ex.: os mais prioritários), ordenando por posicao_fila.",
-    "A recomendação da IA é um parecer prévio: a decisão final é sempre do regulador. Ao falar de 'economia' ou "
-    "'pagamento indevido evitado', diga que é o ajuste sugerido pela IA, sujeito à decisão do regulador.",
+    "A recomendação da IA é um parecer prévio: a decisão final é sempre do regulador. Para 'economia', 'pagamento "
+    "indevido evitado' ou 'ajuste', use a medida 'Ajuste por evidência sugerido pela IA' e diga que é uma sugestão, "
+    "sujeita à decisão do regulador; franquia, LMI e recusa por falta de cobertura não entram nela.",
+    "Encaminhados ao regulador = fora do fast track; quantos já foram decididos está em regulacao_metrics.",
     "Fast track = sinistro liberado sem fila: valor até R$ 5 mil, cobertura válida, evidência climática forte, score de "
     "suspeita abaixo de 0,2 e parecer de pagamento integral. Suspeito = score de suspeita >= 0,2.",
     "Exposição = valor reclamado. Lote = grupo de chegada dos avisos (1 a 10) ao longo dos dias do evento.",
-    "Dados pessoais (CPF, nome, telefone) não estão disponíveis neste espaço, por LGPD. Se pedirem, explique isso.",
+    "Dados pessoais de segurados (CPF, nome, telefone) não estão neste espaço, por LGPD; se pedirem, explique isso. "
+    "A dimensão Regulador identifica o funcionário que decidiu, para a supervisão.",
 ]
 PERGUNTAS_UI = [
     "Qual a exposição total do evento e quanto já foi liberado no fast track?",
     "Quais municípios concentram mais sinistros suspeitos?",
-    "Quanto de pagamento indevido a IA sugeriu evitar?",
+    "Quanto a IA sugeriu ajustar por evidência?",
     "Qual a concordância dos reguladores com a IA?",
     "Quais são os sinistros mais prioritários da fila agora?",
 ]

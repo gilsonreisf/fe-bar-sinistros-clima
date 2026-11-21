@@ -63,3 +63,22 @@ def linhas_gold(base: pd.DataFrame, scores: pd.DataFrame, pareceres: dict[str, d
     g = pd.concat([g, avaliar_fast_track(g)], axis=1)
     g["prioridade"] = prioridade(g, pesos=pesos, hoje=hoje)
     return g[COLUNAS_GOLD]
+
+
+COLUNAS_REGRAS = ["id_aviso", "data_aviso", "valor_reclamado", "cobertura_valida", "forca_evidencia_climatica",
+                  "alertas_qualidade", "flags_documento", "menciona_dano_anterior"]
+
+
+def reaplicar_regras(gold: pd.DataFrame, silver: pd.DataFrame, pesos: dict[str, float] = PESOS_PRIORIDADE,
+                     hoje: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Fast track, motivos e prioridade de novo para todo o gold, com o parecer e o score já gravados (sem LLM).
+
+    Roda a cada execução do job: a espera cresce com o relógio do evento e uma mudança de regra vale para todos os
+    sinistros, não só para os novos (revisão das fases 4 a 8, #4 e #5). Devolve id_aviso, fast_track,
+    bloqueios_fast_track e prioridade.
+    """
+    g = gold[["id_aviso", "score_suspeita", "recomendacao_ia", "status_parecer"]].merge(
+        silver[COLUNAS_REGRAS], on="id_aviso", how="inner")
+    regras = pd.concat([g, avaliar_fast_track(g)], axis=1)
+    regras["prioridade"] = prioridade(regras, pesos=pesos, hoje=hoje)
+    return regras[["id_aviso", "fast_track", "bloqueios_fast_track", "prioridade"]]

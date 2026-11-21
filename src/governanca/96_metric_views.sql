@@ -36,7 +36,7 @@ dimensions:
     synonyms: ["canal de abertura"]
   - name: Força da evidência climática
     expr: dim_aviso.forca_evidencia_climatica
-    comment: "forte, fraca ou ausente, conforme INMET e Defesa Civil."
+    comment: "forte, fraca ou contraria (o clima medido contradiz a causa), conforme INMET e Defesa Civil."
     synonyms: ["evidência climática", "confirmação do evento"]
   - name: Recomendação da IA
     expr: recomendacao_ia
@@ -70,10 +70,10 @@ measures:
     format:
       type: currency
       currency_code: BRL
-  - name: Ajuste sugerido pela IA
-    expr: "SUM(CASE WHEN recomendacao_ia IN ('pagar_parcial', 'recusar') THEN valor_reclamado - coalesce(valor_sugerido, 0) ELSE 0 END)"
-    comment: "Diferença entre o reclamado e o sugerido nos pareceres de pagamento parcial ou recusa (potencial de pagamento indevido evitado, sujeito à decisão do regulador)."
-    synonyms: ["economia", "pagamento indevido evitado", "leakage evitado"]
+  - name: Ajuste por evidência sugerido pela IA
+    expr: "SUM(CASE WHEN recomendacao_ia IN ('pagar_parcial', 'recusar') AND dim_aviso.cobertura_valida THEN greatest(greatest(least(valor_reclamado, dim_aviso.lmi) - coalesce(dim_aviso.franquia, 0), 0) - coalesce(valor_sugerido, 0), 0) ELSE 0 END)"
+    comment: "Nos sinistros com cobertura válida, quanto o parecer sugere abaixo do valor contratual devido (reclamado limitado ao LMI, menos a franquia) por evidência: orçamento acima da tabela, itens não cobertos, dano anterior ou falta de evento climático. Franquia, LMI e recusa por falta de cobertura não entram. É sugestão: a decisão é do regulador."
+    synonyms: ["ajuste sugerido", "redução sugerida pela IA", "valor contestado pela IA"]
     format:
       type: currency
       currency_code: BRL
@@ -103,9 +103,18 @@ measures:
     format:
       type: currency
       currency_code: BRL
-  - name: Na fila do regulador
+  - name: Encaminhados ao regulador
     expr: COUNT(1) FILTER (WHERE NOT fast_track)
-    synonyms: ["fila", "pendentes de regulação"]
+    comment: "Sinistros fora do fast track, que passam pelo regulador. Quantos já foram decididos está em regulacao_metrics."
+    synonyms: ["fora do fast track", "enviados ao regulador", "fila"]
+  - name: Recusas por falta de cobertura
+    expr: COUNT(1) FILTER (WHERE recomendacao_ia = 'recusar' AND NOT coalesce(dim_aviso.cobertura_valida, false))
+    comment: "Pareceres de recusa porque a apólice não cobre a causa (ou não existe); não é ajuste por evidência."
+  - name: Valor reclamado sem cobertura
+    expr: SUM(valor_reclamado) FILTER (WHERE NOT coalesce(dim_aviso.cobertura_valida, false))
+    format:
+      type: currency
+      currency_code: BRL
   - name: Pareceres pendentes
     expr: COUNT(1) FILTER (WHERE status_parecer <> 'ok')
     comment: "Avisos sem parecer prévio válido ainda (o job tenta de novo, até 3 vezes)."
@@ -164,7 +173,7 @@ $$;
 
 -- Conferência: as mesmas métricas, consultadas com MEASURE().
 SELECT `Fast track`, MEASURE(`Avisos`) AS avisos, MEASURE(`Valor reclamado`) AS valor_reclamado,
-  MEASURE(`Percentual de fast track`) AS pct_fast_track, MEASURE(`Ajuste sugerido pela IA`) AS ajuste_ia
+  MEASURE(`Percentual de fast track`) AS pct_fast_track, MEASURE(`Ajuste por evidência sugerido pela IA`) AS ajuste_ia
 FROM ${catalogo}.${schema_gold}.sinistros_metrics GROUP BY ALL ORDER BY 1;
 
 SELECT `Faixa de suspeita`, MEASURE(`Avisos`) AS avisos, MEASURE(`Valor reclamado suspeito`) AS valor_suspeito

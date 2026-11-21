@@ -25,7 +25,7 @@ import {
 import { sql } from '@databricks/appkit-ui/js';
 import { Bot, Sparkles } from 'lucide-react';
 import { Erro, Titulo, Vazio } from '../components/Comum';
-import { api, useApi } from '../lib/api';
+import { api, useApi, type Config } from '../lib/api';
 import {
   ROTULO_RECOMENDACAO,
   fmtBRL,
@@ -62,6 +62,7 @@ export function SinistroPage() {
   const { id = '' } = useParams();
   const { data, loading, error } = useAnalyticsQuery('sinistro_detalhe', { id_aviso: sql.string(id) });
   const op = useApi<Operacao>(`/api/sinistros/${encodeURIComponent(id)}/operacao`);
+  const cfg = useApi<Config>('/api/config');
   const s = data?.[0];
 
   if (loading) return <Skeleton className="h-96 w-full" />;
@@ -70,6 +71,8 @@ export function SinistroPage() {
 
   const score = numero(s.score_suspeita) ?? 0;
   const decidido = (op.dados?.decisoes.length ?? 0) > 0;
+  const atrib = op.dados?.atribuicao;
+  const comigo = Boolean(atrib && cfg.dados && atrib.regulador === cfg.dados.regulador && atrib.status === 'em_analise');
 
   return (
     <div className="space-y-6">
@@ -203,13 +206,20 @@ export function SinistroPage() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : comigo ? (
             <FormDecisao
               id={id}
               recomendacao={String(s.recomendacao_ia ?? 'investigar')}
               valorSugerido={numero(s.valor_sugerido) ?? 0}
+              valorReclamado={numero(s.valor_reclamado) ?? 0}
               aoGravar={op.recarregar}
             />
+          ) : atrib ? (
+            <p className="text-sm text-muted-foreground">Este caso está com {atrib.regulador}; só quem assumiu pode decidir.</p>
+          ) : verdadeiro(s.fast_track) ? (
+            <p className="text-sm text-muted-foreground">Liberado no fast track: não passa pela fila do regulador.</p>
+          ) : (
+            <AssumirEste id={id} aoAssumir={op.recarregar} />
           )}
         </CardContent>
       </Card>
@@ -217,7 +227,33 @@ export function SinistroPage() {
   );
 }
 
-function FormDecisao({ id, recomendacao, valorSugerido, aoGravar }: { id: string; recomendacao: string; valorSugerido: number; aoGravar: () => void }) {
+function AssumirEste({ id, aoAssumir }: { id: string; aoAssumir: () => void }) {
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+  async function assumir() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await api(`/api/sinistros/${encodeURIComponent(id)}/assumir`, { method: 'POST' });
+      aoAssumir();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setEnviando(false);
+    }
+  }
+  return (
+    <div className="flex items-center gap-3">
+      <Button onClick={() => void assumir()} disabled={enviando}>
+        {enviando ? 'Assumindo…' : 'Assumir este caso'}
+      </Button>
+      <span className="text-sm text-muted-foreground">Para decidir, assuma o caso.</span>
+      {erro ? <span className="text-sm text-destructive">{erro}</span> : null}
+    </div>
+  );
+}
+
+function FormDecisao({ id, recomendacao, valorSugerido, valorReclamado, aoGravar }: { id: string; recomendacao: string; valorSugerido: number; valorReclamado: number; aoGravar: () => void }) {
   // Um id por decisão, criado no cliente: reenvio ou clique duplo não duplica (ON CONFLICT DO NOTHING no Lakebase).
   const idDecisao = useRef(crypto.randomUUID());
   const [decisao, setDecisao] = useState(recomendacao in ROTULO_RECOMENDACAO ? recomendacao : 'investigar');
@@ -237,17 +273,26 @@ function FormDecisao({ id, recomendacao, valorSugerido, aoGravar }: { id: string
       aoGravar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
+      aoGravar(); // recarrega a situação do caso (ex.: decidido por outra pessoa)
     } finally {
       setEnviando(false);
     }
   }
 
   const diverge = decisao !== recomendacao;
+  const valorNum = Number(valor);
+  const valorOk = Number.isFinite(valorNum) && valorNum >= 0 && valorNum <= valorReclamado && (decisao !== 'recusar' || valorNum === 0);
   return (
     <div className="grid gap-4 md:grid-cols-4 items-end">
       <div className="space-y-1">
         <Label>Decisão</Label>
-        <Select value={decisao} onValueChange={setDecisao}>
+        <Select
+          value={decisao}
+          onValueChange={(v) => {
+            setDecisao(v);
+            if (v === 'recusar') setValor('0.00');
+          }}
+        >
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
@@ -269,10 +314,15 @@ function FormDecisao({ id, recomendacao, valorSugerido, aoGravar }: { id: string
         <Textarea id="motivo" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
       </div>
       <div className="md:col-span-4 flex items-center gap-3">
-        <Button onClick={() => void enviar()} disabled={enviando || motivo.trim().length < 3 || !Number.isFinite(Number(valor))}>
+        <Button onClick={() => void enviar()} disabled={enviando || motivo.trim().length < 3 || !valorOk}>
           {enviando ? 'Gravando…' : 'Registrar decisão'}
         </Button>
         {erro ? <span className="text-sm text-destructive">{erro}</span> : null}
+        {!valorOk ? (
+          <span className="text-sm text-muted-foreground">
+            O valor vai de R$ 0 ao reclamado ({fmtBRL(valorReclamado, true)}); uma recusa tem valor zero.
+          </span>
+        ) : null}
       </div>
     </div>
   );

@@ -49,6 +49,13 @@ def validar_parecer(texto: str) -> tuple[dict | None, list[str]]:
     if not isinstance(excluidos, list) or not all(isinstance(i, str) for i in excluidos):
         erros.append("itens_excluidos deve ser uma lista de textos")
         excluidos = []
+    # recomendação e base do valor precisam combinar: "integral" com valor reduzido ou "parcial" com valor zero seriam
+    # um parecer contraditório, e o integral é condição do fast track (revisão das fases 4 a 8, #18)
+    combina = {"pagar_integral": ("reclamado",)}  # a recusa já sai com valor zero pelo código, seja qual for a base
+    if recomendacao in combina and base in BASES_VALOR and base not in combina[recomendacao]:
+        erros.append(f"base_valor {base!r} não combina com a recomendação {recomendacao!r}")
+    if recomendacao == "pagar_parcial" and base == "zero":
+        erros.append("pagar_parcial com base_valor = zero")
     if base == "itens_validos" and not excluidos:
         erros.append("itens_excluidos vazio com base_valor = itens_validos")
     confianca = obj.get("confianca")

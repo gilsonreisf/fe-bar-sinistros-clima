@@ -51,6 +51,7 @@ DDL = [
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 )""",
     f"CREATE INDEX IF NOT EXISTS decisoes_por_aviso ON {SCHEMA}.decisoes_regulador (id_aviso)",
+    f"CREATE UNIQUE INDEX IF NOT EXISTS decisao_unica_por_aviso ON {SCHEMA}.decisoes_regulador (id_aviso)",
     f"ALTER TABLE {SCHEMA}.atribuicoes REPLICA IDENTITY FULL",
     f"ALTER TABLE {SCHEMA}.decisoes_regulador REPLICA IDENTITY FULL",
     f"ALTER TABLE {SCHEMA}.reanalises REPLICA IDENTITY FULL",
@@ -58,26 +59,52 @@ DDL = [
 
 
 def consultas(fila: str) -> dict[str, str]:
-    """Consultas parametrizadas (psycopg, %(nome)s). `fila` = tabela sincronizada do gold no Postgres."""
+    """Consultas parametrizadas (psycopg, %(nome)s). `fila` = tabela sincronizada do gold no Postgres.
+
+    O app (`app/server/contrato.ts`) usa as mesmas consultas, com parâmetros posicionais.
+    """
     return {
-        "assumir_proximo": f"""INSERT INTO {SCHEMA}.atribuicoes (id_aviso, regulador)
-SELECT f.id_aviso, %(regulador)s FROM {fila} f
-WHERE NOT f.fast_track
-  AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.atribuicoes a WHERE a.id_aviso = f.id_aviso)
-  AND pg_try_advisory_xact_lock(hashtext(f.id_aviso))
-ORDER BY f.prioridade DESC, f.id_aviso
-LIMIT 1
+        # Candidatos ordenados e materializados primeiro; o lock é tentado um a um, na ordem, e para no primeiro livre.
+        # Com o lock no WHERE da consulta ordenada, o Postgres travaria todos os candidatos antes do LIMIT, e o segundo
+        # regulador voltaria sem caso (revisão das fases 4 a 8, #3).
+        "assumir_proximo": f"""WITH candidatos AS MATERIALIZED (
+  SELECT f.id_aviso FROM {fila} f
+  WHERE NOT f.fast_track AND NOT EXISTS (SELECT 1 FROM {SCHEMA}.atribuicoes a WHERE a.id_aviso = f.id_aviso)
+  ORDER BY f.prioridade DESC, f.id_aviso LIMIT 50
+), escolhido AS (
+  SELECT c.id_aviso FROM candidatos c WHERE pg_try_advisory_xact_lock(hashtext(c.id_aviso)) LIMIT 1
+)
+INSERT INTO {SCHEMA}.atribuicoes (id_aviso, regulador)
+SELECT id_aviso, %(regulador)s FROM escolhido
 ON CONFLICT (id_aviso) DO NOTHING
 RETURNING id_aviso""",
-        "registrar_decisao": f"""INSERT INTO {SCHEMA}.decisoes_regulador (id_decisao, id_aviso, regulador, decisao, valor_aprovado,
-  motivo, recomendacao_ia, valor_sugerido_ia, concordou_com_ia, versao_modelo, versao_prompt, trace_id)
-SELECT %(id_decisao)s, f.id_aviso, %(regulador)s, %(decisao)s, %(valor_aprovado)s, %(motivo)s, f.recomendacao_ia,
-  f.valor_sugerido, %(decisao)s = f.recomendacao_ia, f.versao_modelo, f.versao_prompt, f.trace_id
-FROM {fila} f WHERE f.id_aviso = %(id_aviso)s
-ON CONFLICT (id_decisao) DO NOTHING
-RETURNING id_decisao""",
-        "concluir_atribuicao": f"""UPDATE {SCHEMA}.atribuicoes SET status = 'decidido', atualizado_em = now()
-WHERE id_aviso = %(id_aviso)s AND regulador = %(regulador)s""",
+        "assumir_este": f"""INSERT INTO {SCHEMA}.atribuicoes (id_aviso, regulador)
+SELECT f.id_aviso, %(regulador)s FROM {fila} f WHERE f.id_aviso = %(id_aviso)s AND NOT f.fast_track
+ON CONFLICT (id_aviso) DO NOTHING
+RETURNING id_aviso""",
+        # Uma instrução só (atômica): decide quem está com o caso em análise; grava a decisão e conclui a atribuição.
+        # O id_decisao do cliente torna o clique duplo inofensivo, e o índice único por id_aviso impede duas decisões
+        # para o mesmo sinistro (revisão, #2).
+        "registrar_decisao": f"""WITH atribuido AS (
+  SELECT a.id_aviso FROM {SCHEMA}.atribuicoes a
+  WHERE a.id_aviso = %(id_aviso)s AND a.regulador = %(regulador)s AND a.status = 'em_analise'
+), nova AS (
+  INSERT INTO {SCHEMA}.decisoes_regulador (id_decisao, id_aviso, regulador, decisao, valor_aprovado, motivo,
+    recomendacao_ia, valor_sugerido_ia, concordou_com_ia, versao_modelo, versao_prompt, trace_id)
+  SELECT %(id_decisao)s::uuid, f.id_aviso, %(regulador)s, %(decisao)s::text, %(valor_aprovado)s::numeric,
+    %(motivo)s, f.recomendacao_ia, f.valor_sugerido, %(decisao)s::text = f.recomendacao_ia, f.versao_modelo,
+    f.versao_prompt, f.trace_id
+  FROM {fila} f JOIN atribuido t ON t.id_aviso = f.id_aviso
+  WHERE NOT f.fast_track AND %(valor_aprovado)s::numeric <= f.valor_reclamado
+    AND (%(decisao)s::text <> 'recusar' OR %(valor_aprovado)s::numeric = 0)
+  ON CONFLICT DO NOTHING
+  RETURNING id_decisao, id_aviso
+), concluida AS (
+  UPDATE {SCHEMA}.atribuicoes a SET status = 'decidido', atualizado_em = now()
+  FROM nova n WHERE a.id_aviso = n.id_aviso
+  RETURNING a.id_aviso
+)
+SELECT n.id_decisao FROM nova n""",
         "fila": f"""SELECT f.id_aviso, f.municipio, f.causa_declarada, f.valor_reclamado, f.score_suspeita, f.recomendacao_ia,
   f.valor_sugerido, f.prioridade, a.regulador, a.status
 FROM {fila} f LEFT JOIN {SCHEMA}.atribuicoes a ON a.id_aviso = f.id_aviso

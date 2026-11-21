@@ -14,7 +14,7 @@ import sys
 
 from ambiente import carregar_ambiente
 
-GOLD_LEITURA = ("sinistros_metrics", "regulacao_metrics", "sinistro_detalhe", "sinistros_analisados", "fila_regulacao")
+GOLD_LEITURA = ("sinistros_metrics", "regulacao_metrics", "sinistro_detalhe", "sinistros_analisados")
 
 
 def comandos_uc(amb, sp: str) -> list[str]:

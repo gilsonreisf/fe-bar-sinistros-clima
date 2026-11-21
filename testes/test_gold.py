@@ -72,3 +72,18 @@ def test_cpf_mascarado_no_detalhe_e_marcado_como_dado_pessoal():
     assert ddl[-1] == "SET TAG ON COLUMN cat.gol.sinistro_detalhe.cpf_segurado classificacao_lgpd = dado_pessoal"
     # a função vem antes das visões que a usam
     assert ddl.index(next(c for c in ddl if "FUNCTION" in c)) < ddl.index(next(c for c in ddl if "sinistro_detalhe" in c))
+
+
+def test_reaplicar_regras_atualiza_fast_track_e_prioridade_sem_llm():
+    from gold.processar import reaplicar_regras
+
+    gold = pd.DataFrame({"id_aviso": ["A", "B"], "score_suspeita": [0.05, 0.05], "recomendacao_ia": ["pagar_integral"] * 2,
+                         "status_parecer": ["ok", "ok"]})
+    silver = pd.DataFrame({"id_aviso": ["A", "B"], "data_aviso": ["2026-08-01", "2026-08-10"],
+                           "valor_reclamado": [3000.0, 3000.0], "cobertura_valida": [True, True],
+                           "forca_evidencia_climatica": ["forte", "forte"], "alertas_qualidade": [[], []],
+                           "flags_documento": [[], ["valor_divergente"]], "menciona_dano_anterior": [False, False]})
+    r = reaplicar_regras(gold, silver, hoje=pd.Timestamp("2026-08-10")).set_index("id_aviso")
+    assert bool(r.loc["A", "fast_track"]) and not bool(r.loc["B", "fast_track"])
+    assert r.loc["B", "bloqueios_fast_track"] == ["valor_divergente"]
+    assert r.loc["A", "prioridade"] > r.loc["B", "prioridade"]  # esperou mais

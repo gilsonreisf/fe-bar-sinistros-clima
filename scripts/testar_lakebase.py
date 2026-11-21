@@ -42,7 +42,8 @@ def renderizar(quando: str, r: dict) -> str:
          "", "## 2. Decisão com clique duplo", "",
          f"- {r['decisoes_enviadas']} envios (cada decisão enviada duas vezes com o mesmo `id_decisao`); linhas gravadas: "
          f"**{r['decisoes_gravadas']}**.",
-         f"- Concordância com a IA nas decisões de teste: {r['concordancia']}.", "",
+         f"- Concordância com a IA nas decisões de teste: {r['concordancia']}.",
+         f"- Decisão de um regulador que não está com o caso: **{'recusada' if r['intruso_bloqueado'] else 'GRAVADA (erro)'}**.", "",
          "## 3. Volta ao Unity Catalog (Lakehouse Sync)", "",
          f"- `{r['tabela_historico']}`: {r['linhas_historico']} linhas com as decisões de teste "
          f"(espera de {r['espera_s']:.0f} s); tipos de mudança: {r['tipos_mudanca']}.", ""]
@@ -80,6 +81,11 @@ def main(rodadas: str = "5", saida: str = "evidencias/03-lakebase.md") -> None:
     entregues = [(reg, i) for reg, i in resultado if i]
     decisoes, inicio = [], time.time()
     with conectar(w, projeto) as c:
+        intruso_gravou = None
+        if entregues:  # quem não está com o caso não decide (revisão das fases 4 a 8, #2)
+            intruso_gravou = c.execute(q["registrar_decisao"], {
+                "id_decisao": str(uuid.uuid4()), "id_aviso": entregues[0][1], "regulador": "regulador_teste_intruso",
+                "decisao": "investigar", "valor_aprovado": 0.0, "motivo": "tentativa sem atribuição"}).fetchone()
         for reg, id_aviso in entregues:
             rec = c.execute(f"SELECT recomendacao_ia, valor_sugerido FROM {fila_pg} WHERE id_aviso = %s", (id_aviso,)).fetchone()
             # o regulador de teste concorda com a IA em 4 de cada 5 casos (laço de retorno com divergência real)
@@ -89,7 +95,6 @@ def main(rodadas: str = "5", saida: str = "evidencias/03-lakebase.md") -> None:
             for _ in range(2):  # clique duplo
                 c.execute(q["registrar_decisao"], params)
                 decisoes.append(params["id_decisao"])
-            c.execute(q["concluir_atribuicao"], {"id_aviso": id_aviso, "regulador": reg})
         c.commit()
         ids = list(set(decisoes))
         gravadas = c.execute("SELECT count(*), sum(CASE WHEN concordou_com_ia THEN 1 ELSE 0 END) FROM operacao.decisoes_regulador "
@@ -119,6 +124,7 @@ def main(rodadas: str = "5", saida: str = "evidencias/03-lakebase.md") -> None:
          "rodadas": n, "pedidos": len(pedidos), "entregues": len(entregues), "distintos": len({i for _, i in entregues}),
          "decisoes_enviadas": len(decisoes), "decisoes_gravadas": int(gravadas[0]),
          "concordancia": f"{int(gravadas[1] or 0)} de {int(gravadas[0])}", "tabela_historico": historico,
+         "intruso_bloqueado": intruso_gravou is None,
          "linhas_historico": sum(tipos.values()), "tipos_mudanca": tipos or "ainda sem linhas", "espera_s": time.time() - inicio}
     md = renderizar(datetime.now().strftime("%Y-%m-%d %H:%M"), r)
     (RAIZ / saida).write_text(md, encoding="utf-8")

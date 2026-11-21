@@ -11,9 +11,12 @@ import pandas as pd
 
 from regras.features import LIMIAR_FAST_TRACK, TETO_FAST_TRACK_RS
 
-# D-020: alertas de qualidade e flags de documento que bloqueiam; sem_estacao_no_raio é só informativo
+# D-020: alertas de qualidade e flags de documento que bloqueiam; sem_estacao_no_raio é só informativo. Orçamento
+# ausente, divergente do pedido ou acima da tabela também bloqueiam (revisão das fases 4 a 8, #5): o fast track não
+# depende só do LLM para pegar o pedido maior que o documento.
 BLOQUEANTES = ("apolice_inexistente", "fora_vigencia", "datas_incoerentes", "valor_invalido", "causa_desconhecida",
-               "documento_ilegivel", "extracao_falhou", "preco_nao_conferido", "documento_ausente")
+               "documento_ilegivel", "extracao_falhou", "preco_nao_conferido", "documento_ausente", "sem_orcamento",
+               "valor_divergente", "preco_acima_referencia")
 PESOS_PRIORIDADE = {"suspeita": 0.45, "valor": 0.35, "espera": 0.20}
 VALOR_REFERENCIA_RS = 50000.0  # valor normalizado = valor ÷ R$ 50 mil, com teto em 1
 ESPERA_REFERENCIA_DIAS = 15.0  # espera normalizada = dias desde o aviso ÷ 15, com teto em 1
@@ -46,6 +49,9 @@ def _bloqueios(s: dict) -> list[str]:
         motivos.append("recomendacao_nao_integral")
     if s.get("status_parecer") != "ok":
         motivos.append("parecer_nao_ok")
+    dano = s.get("menciona_dano_anterior")
+    if not _nulo(dano) and bool(dano):
+        motivos.append("dano_anterior")
     presentes = set(_lista(s.get("alertas_qualidade"))) | set(_lista(s.get("flags_documento")))
     motivos += [b for b in BLOQUEANTES if b in presentes]
     return motivos
@@ -57,7 +63,10 @@ def avaliar_fast_track(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def prioridade(df: pd.DataFrame, pesos: dict[str, float] = PESOS_PRIORIDADE, hoje: pd.Timestamp | None = None) -> pd.Series:
-    """0 a 1: suspeita, valor e espera ponderados. Dado faltante conta como o pior caso do componente (vai antes)."""
+    """0 a 1: suspeita, valor e espera ponderados. Dado faltante conta como o pior caso do componente (vai antes).
+
+    `hoje` é o relógio do evento: o job passa a data do último aviso recebido e reaplica a prioridade a cada execução,
+    para a espera crescer com o evento (revisão das fases 4 a 8, #4)."""
     if set(pesos) != {"suspeita", "valor", "espera"} or abs(sum(pesos.values()) - 1) > 1e-9:
         raise ValueError(f"os pesos precisam ter suspeita, valor e espera e somar 1: {pesos}")
     hoje = pd.Timestamp.now().normalize() if hoje is None else hoje

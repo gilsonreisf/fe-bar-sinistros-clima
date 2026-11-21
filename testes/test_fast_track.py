@@ -30,6 +30,10 @@ def test_sinistro_simples_e_limpo_vai_para_o_fast_track():
     ("status_parecer", "pendente", "parecer_nao_ok"),
     ("alertas_qualidade", ["fora_vigencia"], "fora_vigencia"),
     ("flags_documento", ["preco_nao_conferido"], "preco_nao_conferido"),
+    ("flags_documento", ["sem_orcamento"], "sem_orcamento"),
+    ("flags_documento", ["valor_divergente"], "valor_divergente"),
+    ("flags_documento", ["preco_acima_referencia"], "preco_acima_referencia"),
+    ("menciona_dano_anterior", True, "dano_anterior"),
 ])
 def test_cada_condicao_bloqueia_sozinha_com_o_motivo(campo, valor, motivo):
     r = _avaliar(**{campo: valor})
@@ -61,3 +65,20 @@ def test_pesos_precisam_somar_um():
     with pytest.raises(ValueError):
         prioridade(pd.DataFrame({"score_suspeita": [0.1], "valor_reclamado": [1.0], "data_aviso": [pd.Timestamp("2026-09-01")]}),
                    pesos={"suspeita": 0.5, "valor": 0.5, "espera": 0.5})
+
+
+def test_bloqueio_deterministico_nao_depende_do_llm():
+    # revisão das fases 4 a 8 (#5): pedido acima do orçamento ou sem orçamento não sai pelo fast track, mesmo com
+    # parecer de pagamento integral e score baixo
+    for flag in ("sem_orcamento", "valor_divergente"):
+        r = _avaliar(flags_documento=[flag])
+        assert not r.fast_track and r.bloqueios_fast_track == [flag]
+
+
+def test_espera_pelo_relogio_do_evento():
+    # revisão (#4): com o relógio do evento (último aviso), quem avisou antes vem primeiro; sem ele, todo aviso antigo
+    # teria espera máxima e o peso de 20% não ordenaria nada
+    df = pd.DataFrame({"score_suspeita": [0.1, 0.1], "valor_reclamado": [10000.0, 10000.0],
+                       "data_aviso": ["2026-08-01", "2026-08-14"]})
+    p = prioridade(df, hoje=pd.Timestamp("2026-08-15"))
+    assert p.iloc[0] > p.iloc[1]

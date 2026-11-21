@@ -156,3 +156,17 @@ def test_chamada_ao_llm_extrai_so_o_texto_das_partes_de_raciocinio():
     resposta = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=partes))])
     cliente = SimpleNamespace(serving_endpoints=SimpleNamespace(query=lambda **kw: resposta))
     assert chamar_llm_databricks("x", cliente=cliente)("prompt") == '{"a": 1}'
+
+
+def test_recomendacao_e_base_do_valor_precisam_combinar():
+    from parecer.esquema import validar_parecer
+
+    def resp(rec, base, excl=None):
+        return json.dumps({"recomendacao": rec, "base_valor": base, "itens_excluidos": excl or [],
+                           "motivos": ["motivo"], "clausulas": [], "confianca": 0.9})
+
+    assert validar_parecer(resp("pagar_integral", "reclamado"))[0] is not None
+    assert validar_parecer(resp("pagar_integral", "tabela_referencia"))[0] is None
+    assert validar_parecer(resp("recusar", "zero"))[0] is not None
+    assert validar_parecer(resp("pagar_parcial", "zero"))[0] is None
+    assert validar_parecer(resp("pagar_parcial", "reclamado"))[0] is not None  # franquia ou LMI (regra 7 do prompt)

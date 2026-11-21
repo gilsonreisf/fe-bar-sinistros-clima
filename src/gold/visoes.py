@@ -47,20 +47,22 @@ FROM {g}.sinistros_analisados a
 JOIN {s}.sinistros_enriquecidos s ON s.id_aviso = a.id_aviso
 WHERE NOT a.fast_track""",
         f"""CREATE OR REPLACE VIEW {g}.kpis_evento
-COMMENT 'KPIs do evento por lote e no total (lote nulo): volume, exposição, fast track, recomendações e valor ajustado pela IA.'
-AS SELECT lote, count(*) AS avisos, round(sum(valor_reclamado), 2) AS valor_reclamado,
-  sum(CAST(fast_track AS INT)) AS fast_track, round(avg(CAST(fast_track AS DOUBLE)), 4) AS pct_fast_track,
-  round(sum(CASE WHEN fast_track THEN valor_sugerido ELSE 0 END), 2) AS valor_pago_fast_track,
-  sum(CASE WHEN recomendacao_ia = 'pagar_integral' THEN 1 ELSE 0 END) AS rec_pagar_integral,
-  sum(CASE WHEN recomendacao_ia = 'pagar_parcial' THEN 1 ELSE 0 END) AS rec_pagar_parcial,
-  sum(CASE WHEN recomendacao_ia = 'recusar' THEN 1 ELSE 0 END) AS rec_recusar,
-  sum(CASE WHEN recomendacao_ia = 'investigar' THEN 1 ELSE 0 END) AS rec_investigar,
-  round(sum(CASE WHEN recomendacao_ia = 'pagar_parcial' THEN valor_reclamado - valor_sugerido ELSE 0 END), 2)
-    AS valor_ajustado_pagamento_parcial,
-  sum(CASE WHEN status_parecer <> 'ok' THEN 1 ELSE 0 END) AS pareceres_pendentes,
-  round(avg(score_suspeita), 4) AS score_medio
-FROM {g}.sinistros_analisados
-GROUP BY GROUPING SETS ((lote), ())""",
+COMMENT 'KPIs do evento por lote e no total (lote nulo): volume, exposição, fast track, recomendações e ajuste por evidência sugerido pela IA (mesma definição da metric view sinistros_metrics).'
+AS SELECT a.lote, count(*) AS avisos, round(sum(a.valor_reclamado), 2) AS valor_reclamado,
+  sum(CAST(a.fast_track AS INT)) AS fast_track, round(avg(CAST(a.fast_track AS DOUBLE)), 4) AS pct_fast_track,
+  round(sum(CASE WHEN a.fast_track THEN a.valor_sugerido ELSE 0 END), 2) AS valor_pago_fast_track,
+  sum(CASE WHEN a.recomendacao_ia = 'pagar_integral' THEN 1 ELSE 0 END) AS rec_pagar_integral,
+  sum(CASE WHEN a.recomendacao_ia = 'pagar_parcial' THEN 1 ELSE 0 END) AS rec_pagar_parcial,
+  sum(CASE WHEN a.recomendacao_ia = 'recusar' THEN 1 ELSE 0 END) AS rec_recusar,
+  sum(CASE WHEN a.recomendacao_ia = 'investigar' THEN 1 ELSE 0 END) AS rec_investigar,
+  round(sum(CASE WHEN a.recomendacao_ia IN ('pagar_parcial', 'recusar') AND s.cobertura_valida
+    THEN greatest(greatest(least(a.valor_reclamado, s.lmi) - coalesce(s.franquia, 0), 0) - coalesce(a.valor_sugerido, 0), 0)
+    ELSE 0 END), 2) AS ajuste_por_evidencia,
+  sum(CASE WHEN a.status_parecer <> 'ok' THEN 1 ELSE 0 END) AS pareceres_pendentes,
+  round(avg(a.score_suspeita), 4) AS score_medio
+FROM {g}.sinistros_analisados a
+LEFT JOIN {s}.sinistros_enriquecidos s ON s.id_aviso = a.id_aviso
+GROUP BY GROUPING SETS ((a.lote), ())""",
         f"""CREATE OR REPLACE VIEW {g}.sinistro_detalhe
 COMMENT 'Detalhe do sinistro para o app: aviso enriquecido (silver) + análise (gold), com o CPF mascarado (LGPD).'
 AS SELECT s.* EXCEPT (cpf_segurado), {g}.mascarar_cpf(s.cpf_segurado) AS cpf_segurado, a.score_suspeita, a.fatores_suspeita, a.versao_modelo, a.recomendacao_ia, a.valor_sugerido, a.motivos,

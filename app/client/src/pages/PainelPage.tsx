@@ -29,7 +29,7 @@ export function PainelPage() {
               valor={fmtPct(k.pct_fast_track)}
               contexto={`${fmtInt(k.fast_track)} sinistros · ${fmtBRL(k.valor_liberado_fast_track)} sugeridos`}
             />
-            <Kpi rotulo="Na fila do regulador" valor={fmtInt(k.na_fila)} contexto="fora do fast track, por prioridade" />
+            <Kpi rotulo="Encaminhados ao regulador" valor={fmtInt(k.encaminhados)} contexto="fora do fast track, em fila por prioridade" />
             <Kpi
               rotulo="Sinistros suspeitos"
               valor={fmtInt(k.suspeitos)}
@@ -37,9 +37,9 @@ export function PainelPage() {
               tom="alerta"
             />
             <Kpi
-              rotulo="Ajuste sugerido pela IA"
+              rotulo="Ajuste por evidência sugerido pela IA"
               valor={fmtBRL(k.ajuste_ia)}
-              contexto="pagamentos parciais e recusas; a decisão é do regulador"
+              contexto={`abaixo do devido contratual, em casos com cobertura; ${fmtInt(k.recusas_cobertura)} recusas por falta de cobertura à parte; a decisão é do regulador`}
             />
             <Kpi
               rotulo="Pareceres pendentes"
@@ -69,7 +69,7 @@ export function PainelPage() {
               queryKey="painel_por_lote"
               parameters={{}}
               xKey="lote"
-              yKey={['fast_track', 'fila']}
+              yKey={['fast_track', 'regulador']}
               stacked
               showLegend
               colorPalette="categorical"

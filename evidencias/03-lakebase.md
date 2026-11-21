@@ -1,6 +1,6 @@
 # Lakebase: fila, decisões e volta ao lakehouse (teste ponta a ponta)
 
-Gerado em 2026-11-21 10:29 com `uv run python scripts/testar_lakebase.py`.
+Gerado em 2026-11-21 10:59 com `uv run python scripts/testar_lakebase.py`.
 
 ## Estrutura
 
@@ -12,14 +12,15 @@ Gerado em 2026-11-21 10:29 com `uv run python scripts/testar_lakebase.py`.
 ## 1. Dois reguladores assumindo ao mesmo tempo
 
 - 6 pedidos simultâneos de "Assumir próximo" (3 rodadas × 2 reguladores).
-- Sinistros entregues: 4; distintos: 4; repetidos: **0**.
-- Pedidos sem caso: 2. Na corrida pelo mesmo sinistro, a PK barra o segundo regulador, que volta sem caso em vez de duplicar; o app tenta o próximo até 3 vezes.
+- Sinistros entregues: 6; distintos: 6; repetidos: **0**.
+- Pedidos sem caso: 0. Na corrida pelo mesmo sinistro, a PK barra o segundo regulador, que volta sem caso em vez de duplicar; o app tenta o próximo até 3 vezes.
 
 ## 2. Decisão com clique duplo
 
-- 8 envios (cada decisão enviada duas vezes com o mesmo `id_decisao`); linhas gravadas: **4**.
-- Concordância com a IA nas decisões de teste: 3 de 4.
+- 12 envios (cada decisão enviada duas vezes com o mesmo `id_decisao`); linhas gravadas: **6**.
+- Concordância com a IA nas decisões de teste: 4 de 6.
+- Decisão de um regulador que não está com o caso: **recusada**.
 
 ## 3. Volta ao Unity Catalog (Lakehouse Sync)
 
-- `fe_bar_sinistros_catalog.operacional.lb_decisoes_regulador_history`: 4 linhas com as decisões de teste (espera de 30 s); tipos de mudança: {'insert': 4}.
+- `fe_bar_sinistros_catalog.operacional.lb_decisoes_regulador_history`: 6 linhas com as decisões de teste (espera de 32 s); tipos de mudança: {'insert': 6}.
