@@ -1,0 +1,35 @@
+# Job serverless de avaliação do parecer prévio (spec 6.4): dataset, prompts v1 × v2, portão, registro e endpoint.
+# A pasta-pai do experimento precisa existir antes do deploy: databricks workspace mkdirs /Shared/sinistros_clima/dev
+resources:
+  experiments:
+    experimento_parecer:
+      name: /Shared/${bundle.name}/${bundle.target}/parecer_sinistro
+  jobs:
+    job_avaliacao_parecer:
+      name: sinistros_clima_avaliacao_parecer
+      max_concurrent_runs: 1
+      timeout_seconds: 5400
+      tasks:
+        - task_key: avaliacao
+          environment_key: ml
+          notebook_task:
+            notebook_path: ../notebooks/avaliacao_parecer.py
+            base_parameters:
+              catalogo: ${var.catalogo}
+              schema_silver: ${var.prefixo_schema}silver
+              schema_ml: ${var.prefixo_schema}ml
+              experimento: /Shared/${bundle.name}/${bundle.target}/parecer_sinistro
+              endpoint_llm: databricks-claude-sonnet-5-5  # D-017: o Claude Sonnet mais recente do workspace
+              endpoint_parecer: sinistros-clima-parecer-${bundle.target}
+              lotes_validacao: "1"
+              max_por_padrao: "25"
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies:
+              # ambiente, regras, ml e parecer (D-019); o wheel só declara pandas e numpy como dependências (D-021)
+              - ${var.pacote_python}
+              - lightgbm==4.7.0  # para pontuar com o modelo de suspeita (champion)
+              - mlflow==3.18.0
+              - matplotlib

@@ -17,6 +17,17 @@ from parecer.valor import calcular_valor, valores_de_referencia
 LLM_PADRAO = "databricks-claude-sonnet-5-5"  # D-017: o Claude Sonnet mais recente do workspace
 
 
+def juntar_score(entrada: dict, score, fatores) -> dict:
+    """Integração ML → GenAI: o score e os fatores do modelo de suspeita entram na entrada do parecer, se houver."""
+    try:
+        valor = float(score)
+    except (TypeError, ValueError):
+        return entrada
+    if valor != valor:  # NaN
+        return entrada
+    return {**entrada, "modelo_suspeita": {"score_suspeita": round(valor, 4), "fatores_suspeita": fatores or ""}}
+
+
 def renderizar_prompt(template: str, entrada: dict) -> str:
     completa = {**entrada, "valores_calculados": valores_de_referencia(entrada)}
     return (template.replace("{{clausulas}}", texto_clausulas())
