@@ -21,7 +21,11 @@ def esquema_spark() -> str:
     return ", ".join(f"{c} {t}" for c, t in ESQUEMA_GOLD)
 
 
-def ddl_gold(catalogo: str, schema_silver: str, schema_gold: str) -> list[str]:
+GRUPO_CPF_COMPLETO = "regulacao_sinistros"  # grupo da conta que vê o CPF completo (LGPD: mínimo necessário)
+
+
+def ddl_gold(catalogo: str, schema_silver: str, schema_gold: str, grupo_cpf: str = GRUPO_CPF_COMPLETO) -> list[str]:
+    """O 1º comando cria a tabela; os demais (função de máscara e visões) são recriados a cada execução."""
     s, g = f"{catalogo}.{schema_silver}", f"{catalogo}.{schema_gold}"
     colunas = ",\n  ".join(f"{c} {t}" + (" NOT NULL" if c == "id_aviso" else "") for c, t in ESQUEMA_GOLD)
     return [
@@ -29,6 +33,10 @@ def ddl_gold(catalogo: str, schema_silver: str, schema_gold: str) -> list[str]:
   {colunas}
 ) COMMENT 'Sinistro analisado: score de suspeita, parecer prévio por IA, fast track (com motivos de bloqueio) e prioridade.'
 TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')""",
+        f"""CREATE OR REPLACE FUNCTION {g}.mascarar_cpf(cpf STRING) RETURNS STRING
+COMMENT 'LGPD: CPF completo só para o grupo {grupo_cpf}; os demais veem só os 3 dígitos do meio.'
+RETURN CASE WHEN cpf IS NULL THEN NULL WHEN is_account_group_member('{grupo_cpf}') THEN cpf
+  ELSE concat('***.', substr(regexp_replace(cpf, '[^0-9]', ''), 4, 3), '.***-**') END""",
         f"""CREATE OR REPLACE VIEW {g}.fila_regulacao
 COMMENT 'Fila do regulador: sinistros fora do fast track, do mais prioritário para o menos.'
 AS SELECT row_number() OVER (ORDER BY a.prioridade DESC, a.data_aviso, a.id_aviso) AS posicao_fila,
@@ -54,10 +62,11 @@ AS SELECT lote, count(*) AS avisos, round(sum(valor_reclamado), 2) AS valor_recl
 FROM {g}.sinistros_analisados
 GROUP BY GROUPING SETS ((lote), ())""",
         f"""CREATE OR REPLACE VIEW {g}.sinistro_detalhe
-COMMENT 'Detalhe do sinistro para o app: aviso enriquecido (silver) + análise (gold).'
-AS SELECT s.*, a.score_suspeita, a.fatores_suspeita, a.versao_modelo, a.recomendacao_ia, a.valor_sugerido, a.motivos,
+COMMENT 'Detalhe do sinistro para o app: aviso enriquecido (silver) + análise (gold), com o CPF mascarado (LGPD).'
+AS SELECT s.* EXCEPT (cpf_segurado), {g}.mascarar_cpf(s.cpf_segurado) AS cpf_segurado, a.score_suspeita, a.fatores_suspeita, a.versao_modelo, a.recomendacao_ia, a.valor_sugerido, a.motivos,
   a.clausulas, a.itens_excluidos, a.confianca, a.status_parecer, a.versao_prompt, a.llm, a.trace_id, a.fast_track,
   a.bloqueios_fast_track, a.prioridade, a.analisado_em
 FROM {s}.sinistros_enriquecidos s
 JOIN {g}.sinistros_analisados a ON a.id_aviso = s.id_aviso""",
+        f"SET TAG ON COLUMN {g}.sinistro_detalhe.cpf_segurado classificacao_lgpd = dado_pessoal",  # visão: SET TAG ON
     ]

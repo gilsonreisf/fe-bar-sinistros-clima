@@ -62,3 +62,13 @@ def test_pesos_invalidos_falham_cedo():
     with pytest.raises(ValueError):
         linhas_gold(pd.DataFrame(columns=["id_aviso"]), pd.DataFrame(), {}, "llm", "3", pd.Timestamp("2026-09-01"), {},
                     pesos={"suspeita": 1.0, "valor": 1.0, "espera": 1.0})
+
+
+def test_cpf_mascarado_no_detalhe_e_marcado_como_dado_pessoal():
+    ddl = ddl_gold("cat", "sil", "gol", grupo_cpf="grupo_x")
+    texto = "\n".join(ddl)
+    assert "CREATE OR REPLACE FUNCTION cat.gol.mascarar_cpf" in texto and "is_account_group_member('grupo_x')" in texto
+    assert "s.* EXCEPT (cpf_segurado), cat.gol.mascarar_cpf(s.cpf_segurado) AS cpf_segurado" in texto
+    assert ddl[-1] == "SET TAG ON COLUMN cat.gol.sinistro_detalhe.cpf_segurado classificacao_lgpd = dado_pessoal"
+    # a função vem antes das visões que a usam
+    assert ddl.index(next(c for c in ddl if "FUNCTION" in c)) < ddl.index(next(c for c in ddl if "sinistro_detalhe" in c))
