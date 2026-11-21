@@ -15,6 +15,9 @@ variables:
     description: ID do SQL Warehouse serverless
   pacote_python:
     description: Caminho do wheel do projeto no Volume de artefatos (saída de scripts/publicar_pacote.py)
+  llm_lote:
+    description: LLM do parecer em lote (o mais barato que passou no portão de qualidade da fase 4; D-023)
+    default: databricks-claude-sonnet-5-5
 
 targets:
   dev:

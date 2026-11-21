@@ -65,3 +65,16 @@ def test_notebook_do_parecer_avalia_registra_e_publica():
                    "publicar_endpoint(", "gabarito_evento_2026.csv"):
         assert trecho in texto, trecho
     assert "fe_bar_sinistros_catalog" not in texto and "/Users/" not in texto
+
+
+JOB_EVENTO = RAIZ / "recursos/job_evento.yml"
+
+
+def test_job_do_evento_dispara_por_arquivo_roda_pipeline_e_analise():
+    yml = JOB_EVENTO.read_text(encoding="utf-8")
+    assert "fe_bar_sinistros_catalog" not in yml and "/Users/" not in yml and "@" not in yml
+    assert "file_arrival:" in yml and "url: /Volumes/${var.catalogo}/${var.prefixo_schema}landing/arquivos/avisos/" in yml
+    assert "pipeline_id: ${resources.pipelines.pipeline_sinistros.id}" in yml and "full_refresh: false" in yml
+    assert "max_concurrent_runs: 1" in yml and "depends_on:" in yml and "../notebooks/processar_evento.py" in yml
+    for parametro in ("catalogo", "schema_silver", "schema_gold", "schema_ml", "experimento_parecer", "llm_lote"):
+        assert re.search(rf"^\s+{parametro}: ", yml, re.M), parametro

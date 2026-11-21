@@ -1,0 +1,43 @@
+# Job do evento (spec 11): a chegada de um lote de avisos no Volume dispara o pipeline (bronze e silver) e, em seguida,
+# a análise incremental (score, parecer, fast track e fila no gold). Nomes vêm das variáveis do bundle (D-016).
+resources:
+  jobs:
+    job_evento:
+      name: sinistros_clima_evento
+      max_concurrent_runs: 1  # lote que chega durante uma execução espera a próxima (o gold é idempotente)
+      timeout_seconds: 10800
+      trigger:
+        pause_status: UNPAUSED
+        file_arrival:
+          url: /Volumes/${var.catalogo}/${var.prefixo_schema}landing/arquivos/avisos/
+          min_time_between_triggers_seconds: 120
+          wait_after_last_change_seconds: 120  # o lote termina de subir (PDFs antes, avisos por último)
+      tasks:
+        - task_key: pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_sinistros.id}
+            full_refresh: false
+        - task_key: analise
+          depends_on:
+            - task_key: pipeline
+          environment_key: ml
+          notebook_task:
+            notebook_path: ../notebooks/processar_evento.py
+            base_parameters:
+              catalogo: ${var.catalogo}
+              schema_silver: ${var.prefixo_schema}silver
+              schema_gold: ${var.prefixo_schema}gold
+              schema_ml: ${var.prefixo_schema}ml
+              experimento_parecer: /Shared/${bundle.name}/${bundle.target}/parecer_sinistro
+              llm_lote: ${var.llm_lote}
+              paralelo: "8"
+              max_tentativas: "3"
+              bloco: "200"
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies:
+              - ${var.pacote_python}  # ambiente, regras, ml, parecer e gold (D-019); só pandas e numpy como dependências
+              - lightgbm==4.7.0
+              - mlflow==3.18.0
