@@ -5,7 +5,7 @@ resources:
     job_evento:
       name: sinistros_clima_evento
       max_concurrent_runs: 1  # lote que chega durante uma execução espera a próxima (o gold é idempotente)
-      timeout_seconds: 10800
+      timeout_seconds: 21600  # 8 mil pareceres em lote (~21 por minuto medidos com limite de taxa do FMAPI)
       trigger:
         pause_status: UNPAUSED
         file_arrival:

@@ -12,7 +12,12 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8", "pypdf>=5"]
 # Só local: gerador sintético (faker, reportlab) e scripts que falam com o workspace (databricks-sdk)
-gerador = ["faker>=30", "reportlab>=4.2", "databricks-sdk>=0.81"]
+gerador = [
+    "faker>=30",
+    "reportlab>=4.2",
+    "databricks-sdk>=0.81",
+    "psycopg[binary]>=3.2",
+]
 ml = [
     "lightgbm>=4.5",
     "matplotlib>=3.9",
