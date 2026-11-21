@@ -55,7 +55,8 @@ def consultas(amb, id_aviso: str) -> list[tuple[str, str, str]]:
         ("6. Consumo governado (visão de detalhe com CPF mascarado)", "O que o app mostra ao regulador.",
          f"SELECT id_aviso, cpf_segurado, municipio, recomendacao_ia FROM {c}.{g}.sinistro_detalhe WHERE id_aviso = {a}"),
         ("7. Decisão do regulador de volta ao UC (Lakebase → Lakehouse Sync)",
-         "A decisão gravada no Postgres pelo app, já como histórico SCD2 no Unity Catalog.",
+         "A decisão gravada no Postgres (aqui por um regulador de teste de `scripts/testar_lakebase.py`, com as mesmas "
+         "consultas do app), já como histórico SCD2 no Unity Catalog.",
          f"SELECT _pg_change_type, regulador, decisao, recomendacao_ia, concordou_com_ia, valor_aprovado, criado_em "
          f"FROM {c}.{o}.lb_decisoes_regulador_history WHERE id_aviso = {a} ORDER BY criado_em"),
         ("8. Lineage registrado pelo Unity Catalog para as tabelas do caminho", "Origem → destino, por tipo de entidade.",

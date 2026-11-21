@@ -1,6 +1,6 @@
 # Arquitetura
 
-Uma plataforma só, do aviso que chega ao Volume até a decisão do regulador que volta ao lakehouse: **Lakeflow → Unity Catalog → ML e GenAI → gold → Lakebase → app e Genie**, com um lineage único no Unity Catalog. Tudo serverless, com nomes vindos da configuração (D-016).
+Uma plataforma só, do aviso que chega ao Volume até a decisão do regulador que volta ao lakehouse: **Lakeflow → Unity Catalog → ML e GenAI → gold → Lakebase → app e Genie**, com governança e rastreio no Unity Catalog. Tudo serverless, com nomes vindos da configuração (D-016).
 
 ```mermaid
 flowchart LR
@@ -73,7 +73,7 @@ flowchart LR
   - `genie_diretoria.py`;
   - `permissoes_app.py`;
   - SQL da governança e das metric views (`src/governanca/9x_*.sql`, rodados por `scripts/executar_sql.py`).
-- **O que o lineage do UC mostra:** pipeline → silver → gold (job) → synced table (pipeline), e o histórico das decisões no schema `operacional`. Os detalhes estão em `evidencias/02-governanca.md` e `evidencias/08-rastreio-ponta-a-ponta.md`.
+- **O que o lineage do UC mostra:** fontes → bronze → silver (pipeline), visões do gold e gold → synced table (pipeline). O elo silver → gold passa pelo job, que grava a partir de um DataFrame, e por isso não aparece como aresta. O histórico das decisões entra pelo Lakehouse Sync. O caminho completo de um sinistro é provado por `id_aviso` em `evidencias/08-rastreio-ponta-a-ponta.md` (D-025).
 
 ## Escala e limites conhecidos
 

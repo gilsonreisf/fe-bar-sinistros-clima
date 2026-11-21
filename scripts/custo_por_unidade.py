@@ -54,9 +54,12 @@ def main(saida: str = "evidencias/09-custo-real.md") -> None:
     ai_func = soma(lambda x: x["produto"] == "AI_FUNCTIONS")
     pipeline = soma(lambda x: x["produto"] == "DLT")
     haiku = soma(lambda x: x["recurso"] == "databricks-claude-haiku-5-5")
+    # computação serverless do job do evento (score, regras e chamadas do parecer), que também escala com o evento
+    job_evento = os.environ.get("FE_BAR_JOB_EVENTO_ID", "")
+    computacao_job = soma(lambda x: x["produto"] == "JOBS" and x["recurso"] == job_evento) if job_evento else 0.0
     por_pdf = ai_func / max(pdfs, 1)
     por_aviso_pipeline = (ai_func + pipeline) / max(avisos, 1)
-    por_parecer = haiku / max(pareceres, 1)
+    por_parecer = (haiku + computacao_job) / max(pareceres, 1)
     total = soma(lambda x: True)
 
     def usd(x: float, casas: int = 2) -> str:
@@ -77,8 +80,8 @@ def main(saida: str = "evidencias/09-custo-real.md") -> None:
           f"{usd(por_pdf, 4)} |",
           f"| Aviso processado no pipeline (PDFs + computação serverless) | {inteiro(avisos)} avisos | "
           f"{usd(ai_func + pipeline)} | {usd(por_aviso_pipeline, 4)} |",
-          f"| Parecer prévio em lote (Claude Haiku 5.5) | {inteiro(pareceres)} pareceres já faturados | {usd(haiku)} | "
-          f"{usd(por_parecer, 4)} |", "",
+          f"| Parecer prévio em lote (Claude Haiku 5.5 + computação do job do evento) | {inteiro(pareceres)} pareceres já "
+          f"faturados | {usd(haiku + computacao_job)} | {usd(por_parecer, 4)} |", "",
           f"- **Por sinistro completo** (pipeline + parecer): cerca de **{usd(por_aviso_pipeline + por_parecer, 3)}**. "
           f"Em um evento de 8 mil avisos, isso dá cerca de {usd((por_aviso_pipeline + por_parecer) * 8000)}.",
           "- O parecer do app (\"Reanalisar com IA\", Claude Sonnet 5.5 no endpoint) é sob demanda: cerca de US$ 0,02 por "

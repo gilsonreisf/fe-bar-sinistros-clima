@@ -105,6 +105,22 @@ def atualizar_fila() -> dict:
         return {"tabela": P["synced_fila"], "erro": f"{type(e).__name__}: {e}"[:300]}
 
 
+# Regras reaplicadas a todo o gold já analisado (sem LLM), antes dos novos: a espera cresce com o relógio do evento e
+# uma regra nova vale para todos (revisão das fases 4 a 8, #4 e #5). Os novos já saem com as regras atuais.
+_g = spark.table(f"{GOLD}.sinistros_analisados").select("id_aviso", "score_suspeita", "recomendacao_ia",  # noqa: F821
+                                                        "status_parecer").toPandas()
+_s = silver.select(*COLUNAS_REGRAS).toPandas()
+_r = reaplicar_regras(_g, _s, pesos=PESOS, hoje=HOJE_EVENTO)
+spark.createDataFrame(_r, "id_aviso STRING, fast_track BOOLEAN, bloqueios_fast_track ARRAY<STRING>, prioridade DOUBLE"  # noqa: F821
+                      ).createOrReplaceTempView("regras")
+spark.sql(f"""MERGE INTO {GOLD}.sinistros_analisados t USING regras r ON t.id_aviso = r.id_aviso
+              WHEN MATCHED AND (t.fast_track <> r.fast_track OR t.prioridade <> r.prioridade
+                                OR t.bloqueios_fast_track <> r.bloqueios_fast_track)
+              THEN UPDATE SET fast_track = r.fast_track, bloqueios_fast_track = r.bloqueios_fast_track,
+                              prioridade = r.prioridade""")  # noqa: F821
+REAPLICADAS = len(_r)
+print(f"regras reaplicadas a {REAPLICADAS} sinistros já analisados (relógio do evento {HOJE_EVENTO.date()})")
+
 resumo = {"analisados": 0, "ok": 0, "pendente": 0, "invalido": 0, "fast_track": 0, "segundos": 0.0}
 inicio = time.time()
 tamanho = int(P["bloco"])
@@ -139,20 +155,9 @@ for i in range(0, len(ids), tamanho):
     atualizar_fila()  # o regulador recebe os casos novos a cada bloco, não só no fim (revisão, #7)
 resumo["segundos"] = round(time.time() - inicio, 1)
 resumo["restantes"] = restantes
+resumo["regras_reaplicadas"] = REAPLICADAS
 
-# Regras reaplicadas a todo o gold (sem LLM): a espera cresce com o relógio do evento e uma regra nova vale para todos
-_g = spark.table(f"{GOLD}.sinistros_analisados").select("id_aviso", "score_suspeita", "recomendacao_ia",  # noqa: F821
-                                                        "status_parecer").toPandas()
-_s = silver.select(*COLUNAS_REGRAS).toPandas()
-_r = reaplicar_regras(_g, _s, pesos=PESOS, hoje=HOJE_EVENTO)
-spark.createDataFrame(_r, "id_aviso STRING, fast_track BOOLEAN, bloqueios_fast_track ARRAY<STRING>, prioridade DOUBLE"  # noqa: F821
-                      ).createOrReplaceTempView("regras")
-spark.sql(f"""MERGE INTO {GOLD}.sinistros_analisados t USING regras r ON t.id_aviso = r.id_aviso
-              WHEN MATCHED AND (t.fast_track <> r.fast_track OR t.prioridade <> r.prioridade
-                                OR t.bloqueios_fast_track <> r.bloqueios_fast_track)
-              THEN UPDATE SET fast_track = r.fast_track, bloqueios_fast_track = r.bloqueios_fast_track,
-                              prioridade = r.prioridade""")  # noqa: F821
-resumo["regras_reaplicadas"] = len(_r)
+
 
 # COMMAND ----------
 

@@ -22,7 +22,7 @@
 | 5 | **Decidir** | Registrar a decisão, divergindo da IA num caso | "A decisão é do regulador; a divergência vira aprendizado." |
 | 6 | **IA sob supervisão** | Concordância IA × regulador e a matriz de divergências | "É assim que o diretor confia: medindo a IA todo dia." |
 | 7 | **Genie da diretoria** (link no cabeçalho) | Perguntar: "Quais municípios concentram mais sinistros suspeitos?" e "Quanto de pagamento indevido a IA sugeriu evitar?" | "O mesmo número do painel, em português, sem pedir relatório para a TI." |
-| 8 | **Bastidores** (para o arquiteto) | Lineage no UC do JSON até a decisão; pipeline; modelo `champion`; avaliação v1 × v2 do prompt | "Uma plataforma, um catálogo, um lineage." |
+| 8 | **Bastidores** (para o arquiteto) | Lineage do pipeline e da synced table no UC; rastreio de um sinistro do arquivo à decisão (`08-rastreio`); modelo `champion`; avaliação v1 × v2 do prompt | "Uma plataforma, um catálogo, cada decisão rastreável." |
 
 **Caso para mostrar no detalhe:** um suspeito de alta prioridade da fila (ex.: causa sem cobertura ou orçamento inflado) e um legítimo complexo. O rastreio completo de um caso está em `evidencias/08-rastreio-ponta-a-ponta.md`.
 

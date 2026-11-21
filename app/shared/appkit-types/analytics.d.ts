@@ -19,14 +19,16 @@ declare module "@databricks/appkit-ui/react" {
           pct_fast_track: number;
           /** @sqlType DOUBLE */
           valor_liberado_fast_track: number;
-          /** @sqlType BIGINT */
-          na_fila: number;
+          /** Sinistros fora do fast track, que passam pelo regulador. Quantos já foram decididos está em regulacao_metrics. */
+          encaminhados: number;
           /** Score de suspeita >= 0,2 (fora do fast track, prioridade maior na fila). */
           suspeitos: number;
           /** @sqlType DOUBLE */
           valor_suspeito: number;
-          /** Diferença entre o reclamado e o sugerido nos pareceres de pagamento parcial ou recusa (potencial de pagamento indevido evitado, sujeito à decisão do regulador). */
+          /** Nos sinistros com cobertura válida, quanto o parecer sugere abaixo do valor contratual devido (reclamado limitado ao LMI, menos a franquia) por evidência: orçamento acima da tabela, itens não cobertos, dano anterior ou falta de evento climático. Franquia, LMI e recusa por falta de cobertura não entram. É sugestão: a decisão é do regulador. */
           ajuste_ia: number;
+          /** Pareceres de recusa porque a apólice não cobre a causa (ou não existe); não é ajuste por evidência. */
+          recusas_cobertura: number;
           /** Avisos sem parecer prévio válido ainda (o job tenta de novo, até 3 vezes). */
           pareceres_pendentes: number;
         }>;
@@ -55,8 +57,8 @@ declare module "@databricks/appkit-ui/react" {
           lote: string;
           /** @sqlType BIGINT */
           fast_track: number;
-          /** @sqlType BIGINT */
-          fila: number;
+          /** Sinistros fora do fast track, que passam pelo regulador. Quantos já foram decididos está em regulacao_metrics. */
+          regulador: number;
         }>;
       };
     painel_recomendacoes: {

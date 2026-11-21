@@ -24,7 +24,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 
 ## Como funciona
 
-Uma plataforma, do arquivo que chega ao lakehouse até a decisão do regulador, com um lineage único no Unity Catalog:
+Uma plataforma, do arquivo que chega ao lakehouse até a decisão do regulador, governada e rastreável no Unity Catalog:
 
 **Lakeflow** (Auto Loader + `ai_parse_document`/`ai_extract`) → **Unity Catalog** (governança, LGPD, metric views) → **ML** (modelo de suspeita no UC) e **GenAI** (parecer avaliado e versionado, endpoint com AI Gateway) → **gold** → **Lakebase** (fila e decisões) → **App** (AppKit) e **Genie** → decisões de volta ao UC pelo **Lakehouse Sync**.
 
@@ -86,18 +86,20 @@ Pré-requisitos: Databricks CLI com um profile, `uv` e Node 22. Copie `.env.exem
 3. **Pipeline e jobs:**
    - `PKG=$(uv run python scripts/publicar_pacote.py)`;
    - `databricks bundle deploy -t dev --var warehouse_id=$FE_BAR_WAREHOUSE_ID --var pacote_python=$PKG` (D-019);
-   - na primeira vez, `databricks workspace mkdirs /Shared/sinistros_clima/dev`.
+   - na primeira vez, `databricks workspace mkdirs /Shared/sinistros_clima/dev`;
+   - `databricks bundle run -t dev pipeline_sinistros` (bronze e silver do lote 1).
 4. **Modelo e parecer:**
    - `databricks bundle run -t dev job_treino_modelo`;
    - `databricks bundle run -t dev job_avaliacao_parecer` (avalia o v1 × v2, promove o prompt e publica o endpoint).
-5. **Lakebase:** `uv run python scripts/provisionar_lakebase.py`.
-6. **Evento:** `uv run python scripts/simular_evento.py --lotes 9 --paralelo 16`. A chegada dos arquivos dispara o `job_evento`.
-7. **Governança, metric views e Genie:**
+5. **Gold do lote 1:** `databricks bundle run -t dev job_evento` (cria `gold.sinistros_analisados` e as visões).
+6. **Lakebase:** `uv run python scripts/provisionar_lakebase.py` (precisa do gold do passo 5).
+7. **Evento:** `uv run python scripts/simular_evento.py --lotes 9 --paralelo 16`. A chegada dos arquivos dispara o `job_evento`; se o parecer em lote passar do tempo máximo, o job pede a própria continuação.
+8. **Governança, metric views e Genie:**
    - `uv run python scripts/aplicar_visoes_gold.py`;
    - `uv run python scripts/executar_sql.py src/governanca/95_governanca.sql`;
    - `uv run python scripts/executar_sql.py src/governanca/96_metric_views.sql`;
    - `uv run python scripts/genie_diretoria.py`.
-8. **App:** veja `app/README.md` (deploy pelo bundle do app e `scripts/permissoes_app.py`).
-9. **Evidências:**
+9. **App:** veja `app/README.md` (deploy pelo bundle do app e `scripts/permissoes_app.py`).
+10. **Evidências:**
    - `scripts/testar_lakebase.py`, `scripts/avaliar_teste_final.py`, `scripts/rastrear_sinistro.py` e `scripts/custo_por_unidade.py`;
    - `scripts/registrar_evidencia.py` para os arquivos SQL de conferência.

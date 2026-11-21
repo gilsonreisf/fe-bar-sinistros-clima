@@ -35,7 +35,8 @@ export function SupervisaoPage() {
       </div>
       <Fonte>
         Fonte: metric view <code>gold.regulacao_metrics</code> sobre <code>operacional.lb_decisoes_regulador_history</code>{' '}
-        (Lakehouse Sync do Lakebase, com alguns minutos de atraso).
+        (Lakehouse Sync do Lakebase, com alguns minutos de atraso). Neste protótipo, a maior parte das decisões é de
+        reguladores de teste automatizado (dimensão &quot;Origem da decisão&quot;).
       </Fonte>
 
       <div className="grid gap-4 lg:grid-cols-2">

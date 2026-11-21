@@ -132,6 +132,9 @@ comment: "Decisões dos reguladores registradas no app (Lakebase, de volta ao UC
 dimensions:
   - name: Regulador
     expr: regulador
+  - name: Origem da decisão
+    expr: "CASE WHEN regulador LIKE 'regulador_teste_%' THEN 'teste automatizado' ELSE 'app' END"
+    comment: "teste automatizado = decisões dos reguladores fictícios de scripts/testar_lakebase.py; app = reguladores reais."
   - name: Decisão do regulador
     expr: decisao
     synonyms: ["decisão final"]

@@ -20,8 +20,7 @@ variables:
     description: Endpoint do parecer prévio (job de avaliação, D-022)
     default: sinistros-clima-parecer-dev
   genie_space_id:
-    description: Espaço Genie da diretoria (scripts/genie_diretoria.py); vazio esconde o link
-    default: ""
+    description: Espaço Genie da diretoria (id impresso por scripts/genie_diretoria.py); obrigatório, porque o app não aceita variável de ambiente vazia
 
 sync:
   include:
