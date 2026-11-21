@@ -29,18 +29,18 @@
 ## 3. Tell: o valor e o próximo passo (3 min)
 
 - **Resultado nos lotes nunca vistos** (`evidencias/04c-teste-final.md`):
-  - o modelo bate a regra (AUC 0,99 contra 0,95) e deixa passar menos suspeitos no fast track;
-  - o parecer acerta ~98% das recomendações e ~99,7% dos valores (±10%).
-- **Custo medido:** cerca de US$ 0,006 por sinistro processado (pipeline + parecer), referência a calibrar na PoC (`evidencias/09-custo-real.md`).
+  - o modelo bate a regra (AUC 0,997 contra 0,962) e, entre os elegíveis ao fast track, libera 15 suspeitos contra 33 da regra;
+  - o parecer acerta 99,4% das recomendações e 99,6% dos valores (±10%).
+- **Custo medido:** cerca de US$ 0,007 por sinistro processado (pipeline + parecer), referência a calibrar na PoC (`evidencias/09-custo-real.md`).
 - **Proposta de PoC (4 a 6 semanas):** um evento histórico do cliente, com o sistema de sinistros e os PDFs reais, medindo o tempo até a indenização, o *leakage* evitado e a concordância com os reguladores.
 
 ## Objeções preparadas
 
 | Persona | Objeção | Resposta |
 |---|---|---|
-| Diretor(a) | "E se a IA errar e pagarmos fraude?" | A IA não paga fora do fast track. O fast track exige valor baixo, cobertura válida, evidência climática forte, score baixo e parecer integral; qualquer dado faltante bloqueia. Nos lotes de teste, ficaram 9 suspeitos de R$ 19 mil no fast track, contra o custo de regular 1.347 casos à mão. |
+| Diretor(a) | "E se a IA errar e pagarmos fraude?" | A IA não paga fora do fast track. O fast track exige valor baixo, cobertura válida, evidência climática forte, score baixo e parecer integral; qualquer dado faltante bloqueia. Nos 9 lotes de teste, 11 suspeitos (R$ 23 mil) passaram pelo fast track, contra 3.737 casos que não precisaram de regulador. |
 | Diretor(a) | "O regulador vai confiar?" | Ele vê os motivos, as cláusulas e as evidências; decide e diverge quando quer; a concordância é medida na tela de supervisão. |
-| Diretor(a) | "Quanto custa?" | Cerca de US$ 0,006 por sinistro no processamento medido, com o endpoint e o banco escalando a zero fora do evento. A PoC mede com o volume real. |
+| Diretor(a) | "Quanto custa?" | Cerca de US$ 0,007 por sinistro no processamento medido, com o endpoint e o banco escalando a zero fora do evento. A PoC mede com o volume real. |
 | Arquiteto(a) | "LGPD?" | Colunas pessoais marcadas com tag; CPF mascarado na camada de consumo; o app e o Genie leem só o gold; auditoria e lineage no UC. |
 | Arquiteto(a) | "Integra com o nosso sistema de sinistros?" | Entrada por arquivo ou CDC (Lakeflow Connect) e saída pela tabela de decisões no UC ou pelo Postgres do Lakebase, por API. |
 | Arquiteto(a) | "Aguenta o pico?" | Pipeline e app são serverless. O gargalo medido é a vazão do LLM pay-per-token (~21 por minuto); em produção, throughput provisionado. |

@@ -14,13 +14,14 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 
 | O quê | Resultado | Evidência |
 |---|---|---|
-| Fast track | ~55% dos avisos liberados sem fila nos lotes de teste | `evidencias/04c-teste-final.md` |
-| Modelo de suspeita × regra fixa (lotes nunca vistos) | AUC de 0,99 contra 0,95; menos suspeitos liberados no fast track | `evidencias/04c-teste-final.md`, `evidencias/04-ml.md` |
-| Parecer prévio da IA (lotes nunca vistos) | ~98% de recomendações iguais ao gabarito; ~99,7% dos valores a ±10% | `evidencias/04c-teste-final.md` |
+| Fast track | 54,9% dos avisos liberados sem fila nos 9 lotes de teste (6.812 avisos), com 11 suspeitos (R$ 23 mil) passando | `evidencias/04c-teste-final.md` |
+| Modelo de suspeita × regra fixa (lotes nunca vistos) | AUC de 0,997 contra 0,962; entre os elegíveis ao fast track, 15 suspeitos liberados pelo score contra 33 pela regra | `evidencias/04c-teste-final.md`, `evidencias/04-ml.md` |
+| Parecer prévio da IA (lotes nunca vistos) | 99,4% de recomendações iguais ao gabarito; 99,6% dos valores a ±10% | `evidencias/04c-teste-final.md` |
+| Cobertura do parecer em lote | 7.612 de 8.000 avisos (95,2%) no prazo; os 388 restantes entram na próxima execução do job (incremental) | `evidencias/05c-gold.md` (D-023) |
 | Avaliação do prompt v1 × v2 | 66,4% → 95,1% de recomendações corretas, com juízes do MLflow | `evidencias/05-avaliacao-genai.md` |
 | Genie da diretoria | 16 de 16 benchmarks corretos | `evidencias/06-genie.md` |
 | Fila no Lakebase | Dois reguladores ao mesmo tempo, sem repetição; clique duplo sem duplicata | `evidencias/03-lakebase.md` |
-| Custo por sinistro (pipeline + parecer) | ~US$ 0,006, referência a calibrar na PoC | `evidencias/09-custo-real.md` |
+| Custo por sinistro (pipeline + parecer) | ~US$ 0,007, referência a calibrar na PoC | `evidencias/09-custo-real.md` |
 
 ## Como funciona
 

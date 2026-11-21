@@ -487,7 +487,7 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - O pipeline levou os 10 lotes (8.000 avisos e 9.705 PDFs) à silver em cerca de 26 minutos.
 - O FMAPI limita o lote a ~21 pareceres por minuto, mesmo com 16 chamadas em paralelo.
 - A 1ª execução completa estourou o timeout de 3 h com 3.220 de 8.000 pareceres. O timeout subiu para 6 h, e uma nova execução incremental continuou sem repetir os pareceres `ok`.
-- A cobertura final está em `evidencias/05c-gold.md`. **Em produção**, a vazão pede throughput provisionado (ou um endpoint dedicado) para o LLM do lote. Isso é dimensionamento, a calibrar na PoC.
+- **Cobertura final, no prazo combinado:** 7.612 de 8.000 avisos analisados (95,2%), dos quais 7.607 com parecer `ok` e 5 inválidos (vão para o regulador). Os 388 restantes ainda não entraram no gold e são pegos pela próxima execução do job, que é incremental (`evidencias/05c-gold.md`). A execução foi cancelada às 13h15, como combinado com o autor. **Em produção**, a vazão pede throughput provisionado (ou um endpoint dedicado) para o LLM do lote. Isso é dimensionamento, a calibrar na PoC.
 
 **Teste final honesto:** os lotes 2 a 10 nunca foram vistos no treino nem na avaliação do parecer. O resultado está em `evidencias/04c-teste-final.md`.
 

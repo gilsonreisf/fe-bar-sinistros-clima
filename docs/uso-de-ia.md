@@ -14,7 +14,7 @@ A regra de desenho é simples: **a IA lê, cruza e recomenda; o código calcula;
 | Supervisão humana | O regulador decide; a concordância IA × regulador é medida | Só quem assumiu o caso decide, uma vez por sinistro; a decisão volta ao UC pelo Lakehouse Sync e aparece na tela "IA sob supervisão" | `03-lakebase.md` (D-024, D-026, D-028) |
 
 **Escolha de modelo por custo e qualidade (D-023):**
-- Para o lote, o Claude Haiku 5.5 empatou com o Sonnet na recomendação correta (95,1%), com um custo medido de cerca de US$ 0,001 por parecer.
+- Para o lote, o Claude Haiku 5.5 empatou com o Sonnet na recomendação correta (95,1%), com um custo medido de cerca de US$ 0,002 por parecer, já com a computação do job.
 - No app, o texto é lido pelo regulador, então ficou o Sonnet (melhor no juiz de diretrizes: 0,923 contra 0,874).
 
 **O que a IA não faz sozinha:**
