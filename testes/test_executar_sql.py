@@ -41,5 +41,5 @@ def test_sql_do_projeto_usa_apenas_placeholders_conhecidos():
     arquivos = sorted((Path(__file__).resolve().parents[1] / "src/governanca").glob("*.sql"))
     assert arquivos
     for arquivo in arquivos:
-        sql = aplicar_variaveis(arquivo.read_text(encoding="utf-8"), carregar_ambiente({}).variaveis_sql())
+        sql = aplicar_variaveis(arquivo.read_text(encoding="utf-8"), carregar_ambiente({}).variaveis_sql() | {"workspace_id": "0"})
         assert "${" not in sql and "sinistros_catalog" not in sql, arquivo.name

@@ -266,3 +266,53 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Publicação dos lotes:** o estado fica num arquivo por destino e guarda a impressão digital da geração. Publicar uma geração diferente no mesmo destino é recusado, e o gerador se recusa a apagar uma saída que já tem lotes publicados (opção `--forcar`).
 
 **Motivo:** a spec é a autoridade. Corrigir antes do upload evita reenviar tudo e reiniciar os checkpoints do pipeline nas fases seguintes.
+
+## D-019: Desenho do pipeline bronze e silver (fase 2)
+
+**Data:** 2026-11-20
+
+**Contexto:** a spec 5 descreve a silver com `ai_parse_document` seguido de `ai_query` e um conjunto mínimo de tabelas. Na implementação surgiram escolhas de função, de granularidade das tabelas e de onde as regras de negócio rodam.
+
+**Escolhas:**
+- **`ai_extract` (v2.1) em vez de `ai_query` para extrair os documentos.** É a função específica para extração estruturada: não exige escolher endpoint, aceita schema com itens aninhados e recebe instruções em português (formato "R$ 1.925,00", descrição copiada como está no documento). O `ai_query` fica reservado para o parecer (fase 4), que precisa de um modelo e de um prompt versionados.
+- **Tabelas silver adicionais:**
+  - `documentos_texto` separa o OCR da extração, para reprocessar só a extração quando as instruções mudarem;
+  - `documentos_resumo` concentra os itens casados com a tabela de preços e o desvio;
+  - `evidencia_climatica` isola a regra de duas fontes;
+  - `clima_estacao_dia` substitui `clima_municipio_dia`, porque a evidência usa a estação válida mais próxima **do local do sinistro**, por variável, e não um clima por município.
+- **Regras Python reaproveitadas no pipeline:**
+  - a agregação diária do INMET e a evidência climática rodam com `applyInPandas` chamando `src/regras`, as mesmas funções do gerador;
+  - as regras chegam ao pipeline como **wheel do projeto num Volume do UC** (`ml/artefatos/<hash>/`, publicado por `scripts/publicar_pacote.py`), instalado com `--no-deps`, porque pandas e numpy já estão no ambiente. Duas tentativas falharam antes:
+    - `--editable` do projeto inteiro;
+    - `root_path` em `src/`.
+    As duas falharam pelo mesmo motivo: o compute serverless do pipeline não lê os arquivos do workspace fora das próprias fontes (`EIO`). O hash no caminho impede que um wheel antigo seja reaproveitado;
+  - o pipeline roda com `development: true`: sem a cadeia de retentativas automáticas e com início mais rápido (não muda nomes);
+  - um teste de paridade confere, aviso a aviso, que a evidência no formato do pipeline é idêntica à do gabarito.
+- **Nada é descartado:** as expectations só medem (warn), e as violações viram `alertas_qualidade` e `flags_documento` no sinistro, que vai ao regulador (spec 10.3).
+- **Só o lote 1 nesta fase (D-017):** 800 avisos e 951 PDFs, com o custo medido antes dos demais lotes. Os lotes 2 a 10 chegam na fase 5, pelo `job_evento` disparado por chegada de arquivo, que é a demonstração do pico do evento.
+
+**Resultado no lote 1 (`evidencias/01-ingestao.md`):**
+- a evidência climática bateu com o gabarito nos 800 avisos;
+- o total do orçamento extraído pela IA bateu em 100% dos avisos, e 99,1% dos itens casaram com a tabela de preços;
+- o orçamento inflado aparece com desvio médio de +82% (todos sinalizados), contra +2% nos legítimos;
+- os 9 laudos de dano preexistente foram detectados.
+
+**Motivo:** menor custo e reprocessamento seletivo, uma única implementação das regras (sem divergência entre gerador e pipeline) e fidelidade à regra da spec de que toda falha vai para o regulador.
+
+## D-020: Pendências da revisão da fase 2 que dependem de decisões de modelagem
+
+**Data:** 2026-11-20
+
+**Contexto:** a revisão independente da fase 2 apontou dois pontos que não são defeitos do pipeline. São definições que as fases 3 a 5 precisam fixar antes de depender delas.
+
+**Escolhas:**
+- **`qtd_orcamentos_prestador` passa a ser point-in-time na fase 3.** Hoje a feature conta todos os avisos presentes, então o valor de um aviso antigo muda quando chegam os lotes seguintes, e a escala do histórico de 2025 (12 meses) difere da do evento.
+  - **Antes do treino:** a feature será redefinida como a quantidade de avisos com orçamento do mesmo prestador nos N dias anteriores a `data_aviso`, calculada do mesmo jeito no histórico e no evento.
+  - **Quem fecha:** o plano da fase 3 define N e o teste de igualdade entre treino e serving.
+  - **Até lá:** a coluna atual é só descritiva.
+- **Semântica dos alertas para a fase 5:** `alertas_qualidade` mistura alertas que bloqueiam e alertas informativos.
+  - **Informativo:** `sem_estacao_no_raio` (68% do lote 1, a maioria em municípios com registro da Defesa Civil) não bloqueia o fast track quando a evidência é `forte` pela Defesa Civil. A D-015 foi criada justamente para esse caso.
+  - **Bloqueiam o fast track:** `apolice_inexistente`, `fora_vigencia`, `datas_incoerentes`, `valor_invalido`, `causa_desconhecida` e as flags `documento_ilegivel`, `extracao_falhou`, `preco_nao_conferido` e `documento_ausente`.
+- **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) foram **aprovados pelo autor em 2026-11-20**, junto com as demais decisões tomadas durante a execução autônoma das fases 1 e 2 (D-016 a D-020).
+
+**Motivo:** fixar essas definições antes do treino e do fast track evita divergência entre treino e serving e mantém a meta de fast track coerente com a regra de duas fontes.

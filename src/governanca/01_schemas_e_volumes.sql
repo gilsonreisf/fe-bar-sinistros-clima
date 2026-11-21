@@ -16,4 +16,6 @@ CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_landing}.arquivos
   COMMENT 'Arquivos brutos, uma pasta por entidade: avisos/, documentos/, apolices/, segurados/, clima_horario/, historico_sinistros/ etc.';
 CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_ml}.restrito
   COMMENT 'Gabarito dos dados sintéticos. Acesso restrito; nunca lido pelo pipeline de features.';
+CREATE VOLUME IF NOT EXISTS ${catalogo}.${schema_ml}.artefatos
+  COMMENT 'Pacotes Python do projeto (wheel), instalados no pipeline e nos jobs serverless.';
 SHOW SCHEMAS IN ${catalogo};

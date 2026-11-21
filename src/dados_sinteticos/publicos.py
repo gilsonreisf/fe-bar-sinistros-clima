@@ -1,13 +1,13 @@
 """Leitores dos dados públicos preparados em dados/publicos/."""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
 
 from dados_sinteticos.config import PESO_MINIMO_MUNICIPIO_DC
-from regras.clima import JANELA_DIAS
+from regras.clima import registro_defesa_civil  # noqa: F401 (reexportado)
 
 
 def carregar_municipios_sc(caminho: Path) -> pd.DataFrame:
@@ -39,9 +39,3 @@ def carregar_defesa_civil(caminho: Path, municipios: pd.DataFrame) -> pd.DataFra
     bruto = dc["moradias_atingidas"].fillna(PESO_MINIMO_MUNICIPIO_DC).astype(float)
     dc["peso"] = bruto / bruto.sum()
     return dc
-
-
-def registro_defesa_civil(dc: pd.DataFrame, codigo_ibge: int, data: date) -> bool:
-    folga = timedelta(days=JANELA_DIAS)
-    linhas = dc[dc["codigo_ibge"] == codigo_ibge]
-    return bool(((linhas["data_inicio"] - folga <= data) & (data <= linhas["data_fim"] + folga)).any())

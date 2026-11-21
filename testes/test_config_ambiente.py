@@ -9,6 +9,7 @@ def test_padroes_sem_variaveis():
     assert [amb.schema(c) for c in CAMADAS] == ["landing", "bronze", "silver", "gold", "ml", "operacional"]
     assert amb.volume_arquivos == "/Volumes/sinistros_clima/landing/arquivos"
     assert amb.volume_restrito == "/Volumes/sinistros_clima/ml/restrito"
+    assert amb.volume_artefatos == "/Volumes/sinistros_clima/ml/artefatos"
 
 
 def test_catalogo_e_prefixo_vem_das_variaveis():

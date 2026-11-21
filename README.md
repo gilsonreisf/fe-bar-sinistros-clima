@@ -14,6 +14,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | Build (Lakeflow → UC → Lakebase → ML/GenAI → Genie → App) | 🔄 Em andamento |
 | Build: fase 0 (ambiente) | ✅ Concluída |
 | Build: fase 1 (dados) | ✅ Concluída (`evidencias/00b-geracao-dados.md`, `evidencias/00c-conferencia-volume.md`) |
+| Build: fase 2 (pipeline bronze e silver) | ✅ Concluída com o lote 1 (`evidencias/01-ingestao.md`); custo em `evidencias/09-custo-real.md` aguarda o faturamento |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
 | Ensaio do roleplay | ⏳ Pendente |
@@ -35,8 +36,9 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | `src/ambiente/` | Nomes do catálogo, dos schemas e dos volumes, lidos do `.env` (nada fixo no código; D-016) |
 | `src/regras/` | Regras de negócio compartilhadas pelo gerador e pelo pipeline (clima e evidência de duas fontes) |
 | `src/dados_sinteticos/` | Leitores dos dados públicos, gerador sintético (cadastros, histórico, evento, PDFs) e gabarito |
+| `src/pipeline/` | Pipeline Lakeflow (SDP): bronze com Auto Loader e silver com `ai_parse_document`, `ai_extract`, cruzamentos e evidência climática |
 | `src/governanca/` | SQL do Unity Catalog (schemas, volumes, conferências), com placeholders `${catalogo}` e `${schema_<camada>}` |
-| `scripts/` | Execução de SQL, verificação do workspace, preparo dos dados públicos e publicação dos lotes do evento |
+| `scripts/` | Execução de SQL e registro de evidências, verificação do workspace, preparo dos dados públicos, publicação dos lotes do evento e do pacote Python usado pelo pipeline |
 | `scripts/exploracao/` | Scripts de exploração das fontes de dados |
 | `dados/publicos/` | Dados públicos curados (INMET, IBGE, Defesa Civil), com as fontes em `FONTES.md` |
 | `dados/amostras/` | Amostras legíveis dos avisos gerados, por padrão |
@@ -46,3 +48,5 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | `_interno/` | Material de apoio local, **não versionado** (veja `.gitignore`) |
 
 Os scripts leem o `.env`. Antes de rodá-los, carregue as variáveis com `set -a; source .env; set +a`.
+
+Deploy do pipeline: `PKG=$(uv run python scripts/publicar_pacote.py)` e, em seguida, `databricks bundle deploy -t dev --var warehouse_id=$FE_BAR_WAREHOUSE_ID --var pacote_python=$PKG` (D-019).
