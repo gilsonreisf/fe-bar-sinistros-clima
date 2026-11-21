@@ -558,7 +558,7 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - **"Reanalisar com IA" busca a entrada no servidor**, com consulta parametrizada à `silver.entrada_parecer` usando a identidade do app. A entrada não vem do navegador, então o cliente não consegue adulterar o que vai para o LLM.
 - **Decisão idempotente:** o `id_decisao` (UUID) nasce no navegador, um por formulário, e o duplo clique grava uma linha só (testado). O motivo é obrigatório.
 - **Identidade:** o regulador é o e-mail repassado pelo Databricks Apps (`x-forwarded-email`). As consultas e a escrita usam o service principal do app, com permissões mínimas (`scripts/permissoes_app.py`):
-  - no UC, leitura só das visões e metric views do gold e da entrada do parecer, mais EXECUTE na máscara;
+  - no UC, leitura do schema gold (camada de consumo, com o CPF mascarado; por schema porque o `CREATE OR REPLACE` das visões apaga grants por objeto) e da entrada do parecer, mais EXECUTE na máscara; nenhuma tabela da silver com dado pessoal;
   - no Postgres, leitura da synced table e escrita só em `operacao`, sem DELETE.
 - **Estados de tela:** carregamento (Skeleton), vazio, erro com mensagem útil (por exemplo, o endpoint acordando do scale-to-zero) e a fonte de cada número.
 

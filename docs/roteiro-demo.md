@@ -15,13 +15,13 @@
 
 | # | Tela | O que mostrar | Frase |
 |---|---|---|---|
-| 1 | **Painel do evento** (app) | Avisos recebidos, exposição, **~55% no fast track**, fila, suspeitos e ajuste sugerido pela IA | "Metade dos casos simples já saiu sem fila; o regulador cuida do resto." |
+| 1 | **Painel do evento** (app) | Avisos recebidos, exposição, **~55% no fast track**, encaminhados ao regulador, suspeitos e o ajuste por evidência sugerido pela IA (abaixo do devido contratual, só com cobertura) | "Metade dos casos simples já saiu sem fila; o regulador cuida do resto." |
 | 2 | **Fila do regulador** | Ordem por prioridade (suspeita, valor e espera) e o motivo de cada caso estar fora do fast track; clicar em **Assumir próximo** | "Dois reguladores nunca pegam o mesmo caso; isso é transação no Lakebase." |
 | 3 | **Detalhe** | Parecer da IA com motivos e cláusulas, ao lado das evidências: cobertura, clima da estação INMET, preço contra a tabela, prestador. CPF mascarado | "A IA lê os PDFs e cruza com a apólice e com o clima; o valor sai de cálculo, não do LLM." |
 | 4 | **Reanalisar com IA** | Nova análise em ~5 s, com trace | "Cada chamada fica auditada no AI Gateway e no MLflow." |
 | 5 | **Decidir** | Registrar a decisão, divergindo da IA num caso | "A decisão é do regulador; a divergência vira aprendizado." |
 | 6 | **IA sob supervisão** | Concordância IA × regulador e a matriz de divergências | "É assim que o diretor confia: medindo a IA todo dia." |
-| 7 | **Genie da diretoria** (link no cabeçalho) | Perguntar: "Quais municípios concentram mais sinistros suspeitos?" e "Quanto de pagamento indevido a IA sugeriu evitar?" | "O mesmo número do painel, em português, sem pedir relatório para a TI." |
+| 7 | **Genie da diretoria** (link no cabeçalho) | Perguntar: "Quais municípios concentram mais sinistros suspeitos?" e "Quanto a IA sugeriu ajustar por evidência?" | "O mesmo número do painel, em português, sem pedir relatório para a TI." |
 | 8 | **Bastidores** (para o arquiteto) | Lineage do pipeline e da synced table no UC; rastreio de um sinistro do arquivo à decisão (`08-rastreio`); modelo `champion`; avaliação v1 × v2 do prompt | "Uma plataforma, um catálogo, cada decisão rastreável." |
 
 **Caso para mostrar no detalhe:** um suspeito de alta prioridade da fila (ex.: causa sem cobertura ou orçamento inflado) e um legítimo complexo. O rastreio completo de um caso está em `evidencias/08-rastreio-ponta-a-ponta.md`.
