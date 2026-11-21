@@ -316,3 +316,52 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) foram **aprovados pelo autor em 2026-11-20**, junto com as demais decisões tomadas durante a execução autônoma das fases 1 e 2 (D-016 a D-020).
 
 **Motivo:** fixar essas definições antes do treino e do fast track evita divergência entre treino e serving e mantém a meta de fast track coerente com a regra de duas fontes.
+
+## D-021: Desenho e resultado do modelo de suspeita (fase 3)
+
+**Data:** 2026-11-20. Decidido e executado de forma autônoma, com a autorização do autor; aguarda a revisão dele.
+
+**Contexto:** a spec 6.1 pede um LightGBM treinado no histórico de 2025, com as features do evento e o registro no UC com alias `champion`. O plano está em `docs/planos/2026-11-20-fase-3-modelo-suspeita.md`.
+
+**Escolhas:**
+- **Mesmas features no treino e no score.**
+  - O pipeline ganhou `silver.historico_enriquecido`, com as mesmas colunas de entrada de `silver.sinistros_enriquecidos`, calculadas pelas mesmas regras:
+    - evidência pela mesma função (`applyInPandas` com `calcular_evidencia_grupo`);
+    - desvio de preço com a mesma chave normalizada;
+    - LMI nulo quando não há cobertura, como no evento.
+  - `regras.features.montar_features()` é usada no treino e dentro do modelo servido.
+  - Decisão, valor pago, motivo e padrão nunca entram como feature. Há teste estático no SQL e checagem no notebook.
+- **Clima bruto fora do modelo; a evidência entra como ordinal** (contrária < fraca < forte).
+  - No histórico de 2025 não há Defesa Civil, então chuva e rajada ali coincidem com a fonte da evidência. No evento, 74% da evidência forte vem só da Defesa Civil.
+  - É um desvio da spec (que lista chuva, rajada e distância). Os valores continuam na silver, para o parecer e o app.
+  - **A ablação não confirmou a piora no lote 1:** com o clima bruto, o AUC no evento foi de 0,987, contra 0,985 sem ele, uma diferença dentro do ruído (186 suspeitos).
+  - A escolha foi mantida pela robustez e pela coerência com a regra de duas fontes, e será reavaliada com todos os lotes na fase 5.
+- **SHAP pelo próprio LightGBM** (`pred_contrib`, TreeSHAP exato), porque o pacote `shap` exige numpy ≥ 2, um risco no ambiente serverless. O modelo servido devolve também os 3 principais fatores do score, em português, e nenhum fator quando o score fica abaixo de 0,2.
+- **Participação do prestador point-in-time e suavizada:**
+  - Fórmula: (avisos do prestador nos 30 dias anteriores ao dia do aviso + 1) ÷ (avisos na janela + 2.000).
+  - **Por que a suavização:** a primeira versão (proporção simples, nula com menos de 200 avisos na janela) gerou 8,6% de legítimos bloqueados no lote 1. Desses, 47 de 53 eram prestadores comuns com 1 aviso numa janela pequena do início do evento.
+  - **Efeito:** com a suavização, o bloqueio indevido caiu para 1,0%, e a detecção de prestador concentrado no teste subiu de 62% para 78%.
+  - **Consequência para a validação:** isso usou o lote 1 como **validação**. O teste final honesto passa a ser os lotes 2 a 10, na fase 5.
+- **Contrato de features no portão de promoção.**
+  - `VERSAO_CONTRATO_FEATURES` vai como tag na versão do modelo. Se a definição de uma feature muda, o AUC do `champion` anterior não é comparável e a versão nova assume.
+  - Foi o que aconteceu: a v1 tinha a proporção simples; a v2 é a `champion`.
+  - Com o mesmo contrato, vale a regra da spec: a versão nova só vira champion com AUC maior; se não, vira `challenger`.
+- **`canal` fora do modelo** (sem hipótese de negócio). `causa_declarada` e `ramo` entram como categóricas de categorias fixas.
+- **Empacotamento:**
+  - *models from code* (`src/ml/modelo_pyfunc.py`), com o booster como artefato, `regras` em `code_paths` e assinatura explícita (todas as colunas aceitam nulo).
+  - `preparar_entrada()` tipa a entrada, porque a assinatura recusa int64 em coluna double.
+- **Job serverless:**
+  - O ambiente de **jobs** não aceita instalar sem dependências (o de pipelines aceita). Por isso o wheel passou a declarar só pandas e numpy, e faker, reportlab e databricks-sdk foram para o grupo local `gerador`.
+  - O experimento fica em `/Shared/sinistros_clima/<target>/`, sem nome de usuário.
+
+**Resultado (versão 2, `champion`):**
+- **Treino e teste:** treino com 13.467 sinistros (jan–set/2025) e teste com 6.533 (out–dez/2025).
+  - AUC de 0,997 no teste.
+  - Nos 10% mais suspeitos: precisão de 100% e recall de 73%. Os suspeitos são 13,6% do teste, então 73,5% é o máximo possível nos 10% do topo.
+  - 2,5% dos suspeitos ficariam abaixo de 0,2 e 99,1% dos legítimos seguem elegíveis ao fast track.
+- **Lote 1 do evento** (800 avisos que passaram pelo OCR e pela extração por IA, pontuados pelo modelo carregado do UC):
+  - AUC de 0,985; 4,3% dos suspeitos abaixo de 0,2 (8 de 186) e 99,0% dos legítimos elegíveis.
+  - Os 5 prestadores concentrados do lote 1 não foram detectados. Ainda não há 30 dias de evento, e esse risco fica para o regulador e para a fase 5.
+- **Leitura honesta:** os padrões sintéticos foram plantados com sinais claros, por isso o AUC alto é esperado. O que se prova é que o sinal sobrevive ao pipeline real e que o score é explicável. Com dados reais, o desempenho seria menor, e a calibração viria da PoC.
+
+**Evidências:** `evidencias/04-ml.md`, `evidencias/04-ml-features.md` e `notebooks/saidas/treino_modelo_suspeita.ipynb`.
