@@ -4,7 +4,7 @@
 import { analytics, createApp, createWorkspaceClient, getWarehouseId, lakebase, server, serving } from '@databricks/appkit';
 import type { Application, Request } from 'express';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import { Decisao, ID_AVISO, Predicao, consultasLakebase } from './contrato';
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const catalogo = process.env.FE_BAR_CATALOGO ?? '';
@@ -15,8 +15,7 @@ if (!IDENT.test(catalogo) || !/^[a-z0-9_]*$/.test(prefixo)) {
 const SCHEMA_GOLD = `${prefixo}gold`;
 const SCHEMA_SILVER = `${prefixo}silver`;
 const FILA_PG = `${SCHEMA_GOLD}.sinistros_analisados_lb`; // synced table do gold no Postgres (D-024)
-const RECOMENDACOES = ['pagar_integral', 'pagar_parcial', 'recusar', 'investigar'] as const;
-const ID_AVISO = /^AV-\d{4}-\d{6}$/;
+const SQL = consultasLakebase(FILA_PG);
 
 interface AppKitComLakebase {
   lakebase: { query(text: string, params?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
@@ -28,49 +27,6 @@ function regulador(req: Request): string {
   const email = req.header('x-forwarded-email') ?? req.header('x-forwarded-preferred-username');
   return email?.trim() || process.env.FE_BAR_REGULADOR_LOCAL || 'regulador_local';
 }
-
-// "Assumir próximo" atômico: a PK de id_aviso impede dois reguladores no mesmo caso e o advisory lock pula o caso que
-// outro regulador está pegando no mesmo instante (mesma consulta de src/lakebase/operacao.py, testada em 03-lakebase.md).
-const SQL_ASSUMIR = `INSERT INTO operacao.atribuicoes (id_aviso, regulador)
-SELECT f.id_aviso, $1 FROM ${FILA_PG} f
-WHERE NOT f.fast_track
-  AND NOT EXISTS (SELECT 1 FROM operacao.atribuicoes a WHERE a.id_aviso = f.id_aviso)
-  AND pg_try_advisory_xact_lock(hashtext(f.id_aviso))
-ORDER BY f.prioridade DESC, f.id_aviso
-LIMIT 1
-ON CONFLICT (id_aviso) DO NOTHING
-RETURNING id_aviso`;
-
-const SQL_FILA = `SELECT f.id_aviso, f.data_aviso, f.municipio, f.causa_declarada, f.valor_reclamado, f.score_suspeita,
-  f.recomendacao_ia, f.valor_sugerido, f.prioridade, f.bloqueios_fast_track, a.regulador, a.status
-FROM ${FILA_PG} f LEFT JOIN operacao.atribuicoes a ON a.id_aviso = f.id_aviso
-WHERE NOT f.fast_track AND (a.status IS NULL OR a.status = 'em_analise')
-ORDER BY f.prioridade DESC, f.id_aviso LIMIT $1`;
-
-// Só inserção, com id_decisao (UUID) vindo do cliente: o clique duplo não duplica a decisão (spec 10.3).
-const SQL_DECIDIR = `INSERT INTO operacao.decisoes_regulador (id_decisao, id_aviso, regulador, decisao, valor_aprovado,
-  motivo, recomendacao_ia, valor_sugerido_ia, concordou_com_ia, versao_modelo, versao_prompt, trace_id)
-SELECT $1, f.id_aviso, $2, $3, $4, $5, f.recomendacao_ia, f.valor_sugerido, $3 = f.recomendacao_ia, f.versao_modelo,
-  f.versao_prompt, f.trace_id
-FROM ${FILA_PG} f WHERE f.id_aviso = $6
-ON CONFLICT (id_decisao) DO NOTHING
-RETURNING id_decisao`;
-
-const Decisao = z.object({
-  id_decisao: z.string().uuid(),
-  decisao: z.enum(RECOMENDACOES),
-  valor_aprovado: z.coerce.number().min(0).max(10_000_000),
-  motivo: z.string().trim().min(3).max(2000),
-});
-
-const Predicao = z.object({
-  recomendacao: z.string(),
-  valor_sugerido: z.coerce.number(),
-  motivos: z.string(),
-  status_parecer: z.string(),
-  versao_prompt: z.string(),
-  trace_id: z.string().optional().default(''),
-});
 
 async function entradaDoParecer(idAviso: string) {
   // Mesma entrada do lote (silver.entrada_parecer) com o score do modelo de suspeita; parâmetro ligado, sem concatenar.
@@ -114,7 +70,7 @@ function rotas(appkit: AppKitComLakebase) {
     app.get('/api/fila', async (req, res) => {
       const limite = Math.min(Math.max(Number(req.query.limite) || 50, 1), 200);
       try {
-        res.json((await appkit.lakebase.query(SQL_FILA, [limite])).rows);
+        res.json((await appkit.lakebase.query(SQL.fila, [limite])).rows);
       } catch (err) {
         console.error('[fila] falha ao listar:', err);
         res.status(503).json({ error: 'Fila indisponível no momento (Lakebase). Tente de novo em instantes.' });
@@ -127,7 +83,7 @@ function rotas(appkit: AppKitComLakebase) {
         // (até 3 vezes) em vez de devolver "fila vazia" (medido em evidencias/03-lakebase.md).
         let id: unknown = null;
         for (let tentativa = 0; tentativa < 3 && !id; tentativa++) {
-          const { rows } = await appkit.lakebase.query(SQL_ASSUMIR, [regulador(req)]);
+          const { rows } = await appkit.lakebase.query(SQL.assumir, [regulador(req)]);
           id = rows[0]?.id_aviso ?? null;
         }
         res.json({ id_aviso: id });
@@ -166,7 +122,7 @@ function rotas(appkit: AppKitComLakebase) {
       const d = corpo.data;
       const quem = regulador(req);
       try {
-        const { rows } = await appkit.lakebase.query(SQL_DECIDIR, [d.id_decisao, quem, d.decisao, d.valor_aprovado, d.motivo, id]);
+        const { rows } = await appkit.lakebase.query(SQL.decidir, [d.id_decisao, quem, d.decisao, d.valor_aprovado, d.motivo, id]);
         await appkit.lakebase.query(
           `UPDATE operacao.atribuicoes SET status = 'decidido', atualizado_em = now() WHERE id_aviso = $1 AND regulador = $2`,
           [id, quem]);

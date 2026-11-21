@@ -567,3 +567,21 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - O JSON do warehouse traz booleanos como texto, por isso há o conversor `verdadeiro()`.
 - O app publicado exige login com MFA. Os testes de interface rodaram com `npm run dev` contra os mesmos recursos (warehouse, Lakebase e endpoint).
 - O deploy foi validado pelo estado RUNNING e pelos logs: o build remoto descreve as 8 consultas com a identidade do app.
+
+## D-027: Desvios da spec nas fases 5 a 8 (consolidado)
+
+**Data:** 2026-11-21. Registro para a revisão do autor; cada item aponta o motivo e o caminho de volta.
+
+| Spec | O que foi feito | Motivo | Como voltar ao desenho original |
+|---|---|---|---|
+| 5: parecer em lote via `ai_query` no endpoint | Chamada direta ao LLM, com o mesmo código do endpoint (D-023) | Vazão: o endpoint Small com scale-to-zero atende poucas chamadas simultâneas | Throughput provisionado e `ai_query` |
+| 7.1: synced tables `fila.fila_regulacao` e `fila.sinistro_detalhe` | Uma synced table (`gold.sinistros_analisados_lb`), com a fila montada por consulta no Postgres | Sem CREATE CATALOG no FEVM (D-016); uma tabela basta para a fila | Criar o catálogo do Lakebase e sincronizar as visões materializadas |
+| 7.1: `FOR UPDATE SKIP LOCKED` | PK + `pg_try_advisory_xact_lock` (mesmo efeito) | A synced table é somente leitura e não aceita lock de linha | — |
+| 7.2: Genie embutido no app | Espaço Genie próprio, com link no cabeçalho | Corte combinado com o autor (prazo) | Plugin `genie()` do AppKit |
+| 7.2: SHAP no detalhe | Fatores de suspeita em texto | Sem `shap` no ambiente (D-021) | Calcular SHAP no treino e gravar por sinistro |
+| 7.2: "tempo até a indenização" e "valor pago" no painel | Não medidos | O sintético não tem evento de pagamento; o regulador decide no app, mas o pagamento fica fora do escopo | Ligar ao sistema de pagamentos na PoC |
+| 7.2: consultas analíticas em nome do usuário (OBO) | Consultas com o service principal do app; o CPF chega mascarado para ele | Corte de prazo; sem grupo de regulação no FEVM, o OBO mostraria o mesmo dado | Arquivos `.obo.sql` do AppKit e o escopo `sql` no app |
+| 8: `gold.mv_exposicao` (apólices expostas e LMI) | Trocada por `gold.regulacao_metrics` (concordância IA × regulador) | O laço de supervisão da IA pesa mais para o caso; a exposição por apólice fica como próximo passo | Metric view sobre apólices vigentes × clima por município e dia |
+| 9: grupos de personas, filtro de linha e ABAC | Tags LGPD + máscara do CPF na visão de consumo (D-025) | Corte combinado com o autor (governança enxuta) | Grupos da conta e políticas ABAC por tag |
+| 11: `job_preparacao`, `job_retreino` e `job_evidencias`; `provisionar.py` único | Scripts por recurso (`provisionar_lakebase.py`, `genie_diretoria.py`, `permissoes_app.py`, SQL da governança) e evidências por script | O retreino virou próximo passo (corte combinado); os scripts por recurso são idempotentes e mais fáceis de revisar | Um job que encadeie os scripts |
+| 10.2: teste de ponta a ponta com 50 avisos | Fumaça do job com 20 avisos (D-023), teste do Lakebase (`03-lakebase.md`) e rastreio de um sinistro por todas as camadas (`08-rastreio-ponta-a-ponta.md`) | Cobertura equivalente, com o evento completo de 8 mil avisos já processado | — |
