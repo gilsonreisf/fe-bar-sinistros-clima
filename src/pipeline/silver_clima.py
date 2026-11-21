@@ -31,11 +31,11 @@ def clima_estacao_dia():
     return horario.groupBy("codigo_estacao").applyInPandas(_agregar_estacao, ESQUEMA_CLIMA_DIA)
 
 
-@dp.materialized_view(name=f"{SILVER}.evidencia_climatica",
-                      comment="Evidência climática de cada aviso: INMET a até 30 km ou Defesa Civil no município (D-015).")
-def evidencia_climatica():
-    avisos = spark.read.table(f"{SILVER}.avisos").select(  # noqa: F821
-        "id_aviso", "codigo_ibge", "lat", "lon", "data_ocorrencia", "causa_declarada")
+def _evidencia(avisos):
+    """Evidência climática pela regra de duas fontes (D-015), a mesma para o evento e para o histórico de treino.
+
+    `avisos` traz id_aviso, codigo_ibge, lat, lon, data_ocorrencia e causa_declarada; o resultado segue ESQUEMA_EVIDENCIA.
+    """
     estacoes = spark.read.table(f"{BRONZE}.estacoes_inmet").select(  # noqa: F821
         F.col("codigo_estacao").cast("string").alias("codigo_estacao"),
         F.col("lat").cast("double").alias("lat_estacao"), F.col("lon").cast("double").alias("lon_estacao"))
@@ -56,3 +56,22 @@ def evidencia_climatica():
                 .agg(F.max(F.col("d.codigo_ibge").isNotNull()).alias("registro_defesa_civil")))
     return (janela.join(registro, "id_aviso", "left")
             .groupBy("id_aviso").applyInPandas(calcular_evidencia_grupo, ESQUEMA_EVIDENCIA))
+
+
+@dp.materialized_view(name=f"{SILVER}.evidencia_climatica",
+                      comment="Evidência climática de cada aviso: INMET a até 30 km ou Defesa Civil no município (D-015).")
+def evidencia_climatica():
+    avisos = spark.read.table(f"{SILVER}.avisos").select(  # noqa: F821
+        "id_aviso", "codigo_ibge", "lat", "lon", "data_ocorrencia", "causa_declarada")
+    return _evidencia(avisos)
+
+
+@dp.materialized_view(name=f"{SILVER}.evidencia_climatica_historico",
+                      comment="Evidência climática dos sinistros de 2025 (base de treino), pela mesma regra do evento.")
+def evidencia_climatica_historico():
+    # Sem Defesa Civil em 2025: o join com as ocorrências de 2026 não casa datas de 2025, e a regra é a mesma (D-021)
+    hist = spark.read.table(f"{BRONZE}.historico_sinistros").select(  # noqa: F821
+        F.col("id_sinistro").alias("id_aviso"), F.col("codigo_ibge").cast("int").alias("codigo_ibge"),
+        F.col("lat").cast("double").alias("lat"), F.col("lon").cast("double").alias("lon"),
+        F.to_date("data_ocorrencia").alias("data_ocorrencia"), "causa_declarada")
+    return _evidencia(hist).withColumnRenamed("id_aviso", "id_sinistro")
