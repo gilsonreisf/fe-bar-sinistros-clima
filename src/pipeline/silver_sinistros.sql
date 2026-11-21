@@ -77,7 +77,8 @@ SELECT
   valor_orcamento, itens_extraidos, itens_casados, desvio_preco_pct, qtd_orcamentos_prestador,
   -- features do modelo de suspeita com o mesmo significado de silver.historico_enriquecido (D-021)
   coalesce(laudo_dano_anterior = 1, false) AS menciona_dano_anterior,
-  CASE WHEN avisos_janela >= 200 THEN round(coalesce(avisos_prestador, 0) / avisos_janela, 6) END AS participacao_prestador_30d,
+  -- suavizada: (avisos do prestador + 1) / (avisos na janela + 2000); janela pequena não exagera (D-021)
+  round((coalesce(avisos_prestador, 0) + 1.0) / (coalesce(avisos_janela, 0) + 2000), 6) AS participacao_prestador_30d,
   filter(array(
     CASE WHEN coalesce(tem_orcamento, 0) = 0 THEN 'sem_orcamento' END,
     CASE WHEN tem_ilegivel = 1 THEN 'documento_ilegivel' END,

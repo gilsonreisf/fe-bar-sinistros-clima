@@ -48,8 +48,8 @@ SELECT h.id_sinistro, h.data_ocorrencia, h.data_aviso, h.causa_declarada, h.valo
   coalesce(e.fonte_evidencia, 'nenhuma') AS fonte_evidencia,
   e.distancia_estacao_km, e.chuva_mm, e.chuva_max_hora_mm, e.rajada_max_ms,
   d.itens, d.itens_casados, d.desvio_preco_pct,
-  CASE WHEN jt.avisos_janela >= 200 THEN round(coalesce(jp.avisos_prestador, 0) / jt.avisos_janela, 6) END
-    AS participacao_prestador_30d
+  -- suavizada: (avisos do prestador + 1) / (avisos na janela + 2000); janela pequena não exagera (D-021)
+  round((coalesce(avisos_prestador, 0) + 1.0) / (coalesce(avisos_janela, 0) + 2000), 6) AS participacao_prestador_30d
 FROM h
 LEFT JOIN ${catalogo}.${schema_silver}.evidencia_climatica_historico e ON e.id_sinistro = h.id_sinistro
 LEFT JOIN desvio d ON d.id_sinistro = h.id_sinistro

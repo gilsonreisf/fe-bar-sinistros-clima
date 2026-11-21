@@ -10,7 +10,14 @@ import pandas as pd
 
 LIMIAR_FAST_TRACK = 0.2  # spec 6.3: score abaixo disso é condição do fast track (e não há fator a explicar)
 JANELA_PRESTADOR_DIAS = 30  # participação do prestador nos 30 dias anteriores ao aviso (point-in-time; D-020/D-021)
-MIN_AVISOS_JANELA_PRESTADOR = 200  # abaixo disso a proporção é ruído (início do histórico ou do evento) e fica nula
+# Proporção suavizada (empírica bayesiana): (avisos do prestador + 1) / (avisos na janela + 2000), como se houvesse
+# 2.000 avisos "virtuais" a 0,5‰ (participação típica de um prestador no histórico). Sem isso, no início de um evento
+# a janela é pequena e 1 aviso anterior já parecia concentração (lote 1: 47 de 53 falsos positivos; D-021).
+PSEUDO_AVISOS_JANELA = 2000
+PSEUDO_AVISOS_PRESTADOR = 1.0  # = 2000 × 0,0005
+# Versão do contrato das features: mudar a definição de qualquer feature exige subir este número. O portão de promoção
+# só compara AUC entre versões do mesmo contrato (D-021).
+VERSAO_CONTRATO_FEATURES = "2"
 
 COLUNAS_ENTRADA = ["valor_reclamado", "lmi", "desvio_preco_pct", "dias_desde_contratacao", "forca_evidencia_climatica",
                    "cobertura_valida", "menciona_dano_anterior", "participacao_prestador_30d", "causa_declarada", "ramo"]

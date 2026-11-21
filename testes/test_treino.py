@@ -44,6 +44,11 @@ def test_decidir_promocao(novo, atual, esperado):
     assert decidir_promocao(novo, atual) == esperado
 
 
+def test_champion_com_outro_contrato_de_features_nao_e_comparavel():
+    """Se a definição das features mudou, o AUC do champion no teste novo não é comparável: a versão nova assume."""
+    assert decidir_promocao(0.80, 0.99, contrato_igual=False) == "champion"
+
+
 def _dados(n=400, seed=0):
     rng = np.random.default_rng(seed)
     suspeito = rng.random(n) < 0.2

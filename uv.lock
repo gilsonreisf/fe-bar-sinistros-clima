@@ -489,20 +489,22 @@ wheels = [
 name = "fe-bar-sinistros-clima"
 version = "0.1.0"
 source = { editable = "." }
-default-groups = ["dev", "ml"]
+default-groups = ["dev", "gerador", "ml"]
 dependencies = [
-    { name = "databricks-sdk" },
-    { name = "faker" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi-proxy.cloud.databricks.com/simple/" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi-proxy.cloud.databricks.com/simple/" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas" },
-    { name = "reportlab" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pypdf" },
     { name = "pytest" },
+]
+gerador = [
+    { name = "databricks-sdk" },
+    { name = "faker" },
+    { name = "reportlab" },
 ]
 ml = [
     { name = "lightgbm" },
@@ -513,17 +515,19 @@ ml = [
 
 [package.metadata]
 requires-dist = [
-    { name = "databricks-sdk", specifier = ">=0.81" },
-    { name = "faker", specifier = ">=30" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pandas", specifier = ">=2.2" },
-    { name = "reportlab", specifier = ">=4.2" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pypdf", specifier = ">=5" },
     { name = "pytest", specifier = ">=8" },
+]
+gerador = [
+    { name = "databricks-sdk", specifier = ">=0.81" },
+    { name = "faker", specifier = ">=30" },
+    { name = "reportlab", specifier = ">=4.2" },
 ]
 ml = [
     { name = "lightgbm", specifier = ">=4.5" },

@@ -110,12 +110,16 @@ def test_historico_nao_le_colunas_que_vazam_o_rotulo():
     assert not re.search(r"\bpreexistente\b", texto)  # só menciona_preexistente (o laudo), nunca o item marcado
 
 
-def test_participacao_do_prestador_e_point_in_time_nos_dois_lados():
-    from regras.features import JANELA_PRESTADOR_DIAS, MIN_AVISOS_JANELA_PRESTADOR
+def test_participacao_do_prestador_e_point_in_time_e_suavizada_nos_dois_lados():
+    """Janela estritamente anterior ao dia do aviso e proporção suavizada (empírica bayesiana), igual nos dois lados:
+    no início do evento a janela é pequena e 1 aviso anterior parecia concentração (lote 1)."""
+    from regras.features import JANELA_PRESTADOR_DIAS, PSEUDO_AVISOS_JANELA, PSEUDO_AVISOS_PRESTADOR
+    formula = (f"(coalesce(avisos_prestador, 0) + {PSEUDO_AVISOS_PRESTADOR}) / "
+               f"(coalesce(avisos_janela, 0) + {PSEUDO_AVISOS_JANELA})")
     for nome in ("silver_historico.sql", "silver_sinistros.sql"):
         texto = _sql(nome)
         assert f"date_sub(k.data_aviso, {JANELA_PRESTADOR_DIAS})" in texto and "< k.data_aviso" in texto, nome
-        assert f">= {MIN_AVISOS_JANELA_PRESTADOR}" in texto, nome
+        assert formula in texto, nome
 
 
 def test_desvio_de_preco_usa_a_mesma_chave_nos_dois_lados():

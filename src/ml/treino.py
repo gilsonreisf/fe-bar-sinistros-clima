@@ -62,9 +62,15 @@ def contribuicoes(booster: lgb.Booster, X: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(booster.predict(X, pred_contrib=True), columns=[*X.columns, "base"], index=X.index)
 
 
-def decidir_promocao(auc_novo: float, auc_champion: float | None) -> str:
-    """Spec 6.1: só vira champion com AUC MAIOR que o do champion atual no mesmo teste; a primeira versão é champion."""
-    return "champion" if auc_champion is None or auc_novo > auc_champion else "challenger"
+def decidir_promocao(auc_novo: float, auc_champion: float | None, contrato_igual: bool = True) -> str:
+    """Spec 6.1: só vira champion com AUC MAIOR que o do champion atual no mesmo teste; a primeira versão é champion.
+
+    Com outro contrato de features (definição mudou), o champion atual recebe entradas com outro significado e o AUC
+    dele não é comparável: a versão nova assume (D-021).
+    """
+    if auc_champion is None or not contrato_igual:
+        return "champion"
+    return "champion" if auc_novo > auc_champion else "challenger"
 
 
 def assinatura(com_clima_bruto: bool = False):
