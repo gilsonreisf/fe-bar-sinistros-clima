@@ -15,6 +15,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | Build: fase 0 (ambiente) | ✅ Concluída |
 | Build: fase 1 (dados) | ✅ Concluída (`evidencias/00b-geracao-dados.md`, `evidencias/00c-conferencia-volume.md`) |
 | Build: fase 2 (pipeline bronze e silver) | ✅ Concluída com o lote 1 (`evidencias/01-ingestao.md`); custo em `evidencias/09-custo-real.md` aguarda o faturamento |
+| Build: fase 3 (modelo de suspeita) | ✅ LightGBM no UC com alias `champion`. Teste de 2025: AUC de 0,997 contra 0,960 da linha de base de regras, e 55% menos suspeitos liberados no fast track. Lote 1 do evento: AUC de 0,983 (`evidencias/04-ml.md`, D-021) |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
 | Ensaio do roleplay | ⏳ Pendente |
@@ -34,19 +35,23 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | `docs/planos/` | Roadmap e planos de implementação por fase |
 | `docs/decisoes-e-tradeoffs.md` | Registro das decisões tomadas e alternativas descartadas |
 | `src/ambiente/` | Nomes do catálogo, dos schemas e dos volumes, lidos do `.env` (nada fixo no código; D-016) |
-| `src/regras/` | Regras de negócio compartilhadas pelo gerador e pelo pipeline (clima e evidência de duas fontes) |
+| `src/regras/` | Regras de negócio compartilhadas pelo gerador, pelo pipeline e pelo modelo (clima, evidência de duas fontes e features do modelo de suspeita) |
+| `src/ml/` | Treino, métricas e portão de promoção do modelo de suspeita, e o modelo MLflow servido (*models from code*) |
 | `src/dados_sinteticos/` | Leitores dos dados públicos, gerador sintético (cadastros, histórico, evento, PDFs) e gabarito |
-| `src/pipeline/` | Pipeline Lakeflow (SDP): bronze com Auto Loader e silver com `ai_parse_document`, `ai_extract`, cruzamentos e evidência climática |
+| `src/pipeline/` | Pipeline Lakeflow (SDP): bronze com Auto Loader e silver com `ai_parse_document`, `ai_extract`, cruzamentos, evidência climática e as features do histórico de treino |
+| `notebooks/` | Notebooks executados como jobs (fonte `.py`); em `notebooks/saidas/`, a execução com as saídas em texto (`.ipynb`) |
 | `src/governanca/` | SQL do Unity Catalog (schemas, volumes, conferências), com placeholders `${catalogo}` e `${schema_<camada>}` |
-| `scripts/` | Execução de SQL e registro de evidências, verificação do workspace, preparo dos dados públicos, publicação dos lotes do evento e do pacote Python usado pelo pipeline |
+| `scripts/` | Execução de SQL e registro de evidências, verificação do workspace, preparo dos dados públicos, publicação dos lotes do evento e do pacote Python usado pelo pipeline e pelos jobs, e exportação das execuções de notebooks e do modelo como evidência |
 | `scripts/exploracao/` | Scripts de exploração das fontes de dados |
 | `dados/publicos/` | Dados públicos curados (INMET, IBGE, Defesa Civil), com as fontes em `FONTES.md` |
 | `dados/amostras/` | Amostras legíveis dos avisos gerados, por padrão |
 | `evidencias/` | Evidências de execução em texto (verificações do ambiente, geração, conferência do Volume) |
 | `testes/` | Testes automatizados (`uv run pytest`) |
-| `databricks.yml`, `recursos/` | Bundle (DAB) com o target `dev` e as variáveis `catalogo` e `prefixo_schema` |
+| `databricks.yml`, `recursos/` | Bundle (DAB) com o target `dev` e as variáveis `catalogo` e `prefixo_schema`: pipeline, job de treino e experimento MLflow |
 | `_interno/` | Material de apoio local, **não versionado** (veja `.gitignore`) |
 
 Os scripts leem o `.env`. Antes de rodá-los, carregue as variáveis com `set -a; source .env; set +a`.
 
-Deploy do pipeline: `PKG=$(uv run python scripts/publicar_pacote.py)` e, em seguida, `databricks bundle deploy -t dev --var warehouse_id=$FE_BAR_WAREHOUSE_ID --var pacote_python=$PKG` (D-019).
+Deploy do pipeline e dos jobs: `PKG=$(uv run python scripts/publicar_pacote.py)` e, em seguida, `databricks bundle deploy -t dev --var warehouse_id=$FE_BAR_WAREHOUSE_ID --var pacote_python=$PKG` (D-019). Na primeira vez, crie a pasta do experimento MLflow: `databricks workspace mkdirs /Shared/sinistros_clima/dev`.
+
+Treino do modelo de suspeita: `databricks bundle run -t dev job_treino_modelo` (mesmas variáveis do deploy). Em seguida, as evidências: `uv run python scripts/evidencia_modelo.py <task_run_id>` e `uv run python scripts/exportar_execucao.py <task_run_id> notebooks/saidas/treino_modelo_suspeita.ipynb`.

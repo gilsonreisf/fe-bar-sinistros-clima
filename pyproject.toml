@@ -3,23 +3,36 @@ name = "fe-bar-sinistros-clima"
 version = "0.1.0"
 description = "FE Bar: regulação inteligente de sinistros em eventos climáticos (dados sintéticos e públicos)"
 requires-python = ">=3.11,<3.13"
+# Dependências de execução do wheel (pipeline e jobs serverless): só pandas e numpy, que o ambiente já tem (D-021).
 dependencies = [
     "pandas>=2.2",
     "numpy>=1.26",
-    "faker>=30",
-    "reportlab>=4.2",
-    "databricks-sdk>=0.81",
 ]
 
 [dependency-groups]
 dev = ["pytest>=8", "pypdf>=5"]
+# Só local: gerador sintético (faker, reportlab) e scripts que falam com o workspace (databricks-sdk)
+gerador = ["faker>=30", "reportlab>=4.2", "databricks-sdk>=0.81"]
+ml = [
+    "lightgbm>=4.5",
+    "matplotlib>=3.9",
+    "mlflow>=3.1",
+    "scikit-learn>=1.5",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ambiente", "src/regras", "src/dados_sinteticos"]
+packages = ["src/ambiente", "src/regras", "src/ml", "src/dados_sinteticos"]
+
+[tool.uv]
+# ml: treino e modelo de suspeita (fase 3); sem shap, que exige numpy>=2 (D-021)
+default-groups = ["dev", "gerador", "ml"]
+# Paridade com o ambiente serverless 4 dos jobs (versões vistas no modelo registrado): os testes locais rodam com as
+# mesmas versões de pandas e numpy (revisão da fase 3, #10)
+constraint-dependencies = ["pandas==2.2.3", "numpy==2.1.3"]
 
 [tool.pytest.ini_options]
 pythonpath = ["scripts"]

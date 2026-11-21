@@ -316,3 +316,75 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
 - **Os desvios da spec registrados na D-019** (`ai_extract`, tabelas silver adicionais e `clima_estacao_dia`) foram **aprovados pelo autor em 2026-11-20**, junto com as demais decisões tomadas durante a execução autônoma das fases 1 e 2 (D-016 a D-020).
 
 **Motivo:** fixar essas definições antes do treino e do fast track evita divergência entre treino e serving e mantém a meta de fast track coerente com a regra de duas fontes.
+
+## D-021: Desenho e resultado do modelo de suspeita (fase 3)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma, com a autorização do autor, e ajustado depois da revisão independente; aguarda a revisão do autor.
+
+**Contexto:** a spec 6.1 pede um LightGBM treinado no histórico de 2025, com as features do evento e o registro no UC com alias `champion`. O plano está em `docs/planos/2026-11-20-fase-3-modelo-suspeita.md`; os rulings, em `_interno/execucao/ledger-fase-3.md`.
+
+**Escolhas:**
+- **Mesmas features no treino e no score.**
+  - `silver.historico_enriquecido` tem as mesmas colunas de entrada de `silver.sinistros_enriquecidos`, calculadas pelas mesmas regras (evidência por `calcular_evidencia_grupo`, desvio de preço com a mesma chave, LMI nulo sem cobertura), e com os mesmos tipos (double; a participação chegou a sair como DECIMAL por causa de um literal e foi corrigida).
+  - `regras.features` monta a matriz no treino e dentro do modelo servido.
+  - Decisão, valor pago, motivo e padrão nunca entram como feature. Há teste estático no SQL e checagem no notebook.
+- **Clima bruto fora do modelo; a evidência entra como ordinal** (contrária < fraca < forte).
+  - No histórico de 2025 não há Defesa Civil, então chuva e rajada coincidem com a fonte da evidência. No evento, 87% da evidência forte do lote 1 (94% do evento inteiro) vem só da Defesa Civil.
+  - É um desvio da spec. Os valores continuam na silver, para o parecer e o app.
+  - **A ablação não confirmou a piora:** com o clima bruto, o AUC nos lotes de validação foi de 0,988, contra 0,983 sem ele, dentro do ruído (186 suspeitos). A escolha foi mantida pela coerência com a regra de duas fontes e será reavaliada com todos os lotes na fase 5.
+- **Flags de documento fora do modelo, tratadas por regra.** O histórico não tem PDFs, então nunca há extração falha. No modelo, um desvio de preço nulo vale o mesmo que preço igual à tabela.
+  - Por isso, `preco_nao_conferido`, `extracao_falhou`, `documento_ilegivel` e `documento_ausente` bloqueiam o fast track **por regra**, independentemente do score (D-020). Isso é testado na fase 5.
+  - É um desvio da spec, que lista "flags dos documentos" como feature.
+- **SHAP pelo próprio LightGBM** (`pred_contrib`, TreeSHAP exato, com os mesmos valores do `shap.TreeExplainer`), sem dependência extra.
+  - Correção: a primeira versão desta decisão dizia que o pacote `shap` era um risco porque exige numpy ≥ 2. O ambiente serverless 4 já tem numpy 2.1.3. A justificativa válida é só a de evitar a dependência.
+- **Fatores em português só quando o valor justifica** (revisão independente).
+  - O SHAP positivo de um valor típico ou nulo não vira motivo. Exemplos: LMI nulo não é "valor próximo do LMI"; o prestador só é citado com participação ≥ 1‰; a apólice, com menos de 30 dias. Há também uma contribuição mínima.
+  - Nenhum fator é citado quando o score fica abaixo de 0,2.
+  - Esses textos vão para o regulador e para o parecer da fase 4.
+- **Participação do prestador point-in-time e suavizada:** (avisos do prestador nos 30 dias anteriores ao dia do aviso + 1) ÷ (avisos na janela + 2.000).
+  - **Por que a suavização:** a proporção simples bloqueou 8,6% dos legítimos do lote 1. Em 47 de 53 casos, um único aviso anterior numa janela pequena já parecia concentração.
+  - **Efeito:** com a suavização, os bloqueios indevidos caíram para cerca de 1% e a detecção de prestador concentrado no teste subiu de 62% para 78%.
+  - **Consequência:** o lote 1 virou **validação**; o teste final honesto são os lotes 2 a 10, na fase 5. O notebook só lê os lotes do parâmetro `lotes_validacao`, para não tocar no teste final.
+- **Portão de promoção:**
+  - **Comparação:** com o mesmo contrato de features, a versão nova só vira `champion` com AUC maior que o do champion atual no mesmo teste; senão, vira `challenger`.
+  - **Contrato de features:** `VERSAO_CONTRATO_FEATURES` fica amarrado por teste ao hash de `features.py` e dos dois SQL das colunas de entrada, em `src/regras/contrato_features.json`. Se a definição muda, o AUC do champion anterior não é comparável e a versão nova assume.
+  - **Piso absoluto:** AUC de teste ≥ 0,80 e no máximo 10% dos suspeitos abaixo de 0,2. Sem o piso, a versão nunca vira champion.
+  - **Aliases:** são lidos da lista do modelo registrado, sem engolir erro. Ao promover, o `challenger` antigo é removido.
+  - **Histórico:** v1 (proporção simples) → v2 (suavizada) → v3 (contrato 3, revisão). A v3 é a `champion`.
+- **Empacotamento:**
+  - *models from code* com o booster e o `features.py` do treino como artefatos.
+  - O `features.py` é carregado por caminho, com nome de módulo único: com `code_paths`, um processo que já importou `regras` usaria o código do processo sem aviso (teste em subprocesso com uma cópia sentinela).
+  - `preparar_entrada()` tipa a entrada (int64 e Decimal viram float).
+- **Reprodutibilidade:**
+  - linhas em ordem fixa e LightGBM determinístico;
+  - MLflow 3.18.0 e LightGBM 4.7.0 fixados; as versões do ambiente vão como parâmetros do run;
+  - testes locais com pandas 2.2.3 e numpy 2.1.3, as mesmas versões do serverless;
+  - dois `log_input` (treino e teste) da mesma versão Delta de `ml.features_treino`.
+- **Job serverless:**
+  - O ambiente de **jobs** não aceita instalar sem dependências (o de pipelines aceita). Por isso o wheel declara só pandas e numpy, e faker, reportlab e databricks-sdk ficaram no grupo local `gerador`.
+  - O experimento fica em `/Shared/sinistros_clima/<target>/`, sem nome de usuário.
+- **`canal` fora do modelo** (sem hipótese de negócio). `causa_declarada` e `ramo` entram como categóricas de categorias fixas.
+
+**Resultado (versão 3, `champion`), comparado com a linha de base de regras:**
+- **Linha de base:** o OU de cinco regras simples (sem cobertura, evidência contrária, apólice com menos de 30 dias, laudo com dano anterior, preço ≥ 30% acima da tabela). Nos dados sintéticos, ela já separa 5 dos 7 padrões suspeitos.
+- **Teste out–dez/2025** (6.533 sinistros, 13,6% suspeitos):
+
+  | métrica | modelo | regras |
+  |---|---|---|
+  | AUC | 0,997 | 0,960 |
+  | suspeitos abaixo de 0,2 | 2,5% | 7,9% |
+  | suspeitos liberados entre os elegíveis ao fast track (≤ R$ 5 mil, com cobertura e evidência forte) | 14 de 94 | 31 de 94 |
+  | legítimos elegíveis liberados | 99,7% | 100% |
+
+  O ganho do modelo vem quase todo do prestador concentrado (78% bloqueados, contra 0% da regra) e do ranking para a fila. Nos 10% do topo, a precisão é de 100% e o recall é de 73,4%, que é o teto possível com essa prevalência.
+- **Lotes de validação do evento (lote 1, 800 avisos):**
+  - O modelo, carregado do UC, ficou com AUC de 0,983 contra 0,970 da regra.
+  - O escape foi igual nos dois: 4,3%, ou 8 de 186.
+  - Os 5 prestadores concentrados do lote 1 não foram detectados. Eles só começam no episódio de 28/08 e ainda não têm avisos anteriores na janela; a participação deve passar do limiar a partir do lote 4.
+  - No lote 1, só 34 dos 186 suspeitos (inflados e preexistentes) dependem do OCR e da extração por IA. Os 118 `sem_evento_climatico` vêm de joins estruturados.
+- **Legítimos bloqueados (~1%):** são quase todos apólices com menos de 30 dias. No histórico sintético, nenhum legítimo tem menos de 30 dias, uma limitação do gerador. Pela cláusula CG-2.4, esses casos passam mesmo por análise: vão ao regulador e não são recusados.
+- **Leitura honesta:**
+  - Os padrões foram plantados com sinais claros; com dados reais, o desempenho seria menor e a calibração viria da PoC.
+  - A precisão nos 10% do topo é trivial quando a prevalência passa de 10%. O que importa é o vazamento na população do fast track e a comparação com a regra.
+
+**Evidências:** `evidencias/04-ml.md`, `evidencias/04-ml-features.md` e `notebooks/saidas/treino_modelo_suspeita.ipynb`.

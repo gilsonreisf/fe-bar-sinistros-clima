@@ -26,3 +26,7 @@ dados/brutos/
 
 # Rascunhos locais do executor de planos
 .superpowers/
+
+# MLflow local (ensaios e diagnósticos; o tracking real é o workspace)
+mlflow.db
+mlruns/

@@ -1,0 +1,33 @@
+# Job serverless de treino do modelo de suspeita (spec 6.1). Nomes vêm das variáveis do bundle (D-016).
+# A pasta-pai do experimento precisa existir antes do deploy: databricks workspace mkdirs /Shared/sinistros_clima/dev
+resources:
+  experiments:
+    experimento_suspeita:
+      name: /Shared/${bundle.name}/${bundle.target}/modelo_suspeita
+  jobs:
+    job_treino_modelo:
+      name: sinistros_clima_treino_modelo
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: treino
+          environment_key: ml
+          notebook_task:
+            notebook_path: ../notebooks/treino_modelo_suspeita.py
+            base_parameters:
+              catalogo: ${var.catalogo}
+              schema_silver: ${var.prefixo_schema}silver
+              schema_ml: ${var.prefixo_schema}ml
+              experimento: /Shared/${bundle.name}/${bundle.target}/modelo_suspeita
+              lotes_validacao: "1"  # lotes do evento usados como validação; os demais são o teste final (D-021)
+      environments:
+        - environment_key: ml
+          spec:
+            environment_version: "4"
+            dependencies:
+              # ambiente, regras e ml (D-019), publicado por scripts/publicar_pacote.py; o ambiente de jobs não aceita a opção
+              # de instalar sem dependências (o de pipelines aceita), então o wheel só declara pandas e numpy como dependências (D-021)
+              - ${var.pacote_python}
+              - lightgbm==4.7.0  # mesma versão dos testes locais e do modelo registrado
+              - mlflow==3.18.0  # versão que rodou no ambiente 4 e nos testes locais (revisão #10)
+              - scikit-learn
+              - matplotlib

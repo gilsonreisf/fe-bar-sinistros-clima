@@ -29,7 +29,7 @@
 - **Gabarito:** `ml/restrito` **nunca** é lido pelo pipeline. Ele aparece só nas consultas de conferência (evidência).
 - **Custo (D-017):** nesta fase só o **lote 1** (800 avisos) é publicado e processado. O custo é medido em `system.billing` antes de qualquer outro lote; os demais lotes ficam para a fase 5 (chegada do evento pelo `job_evento`).
 - **Toda falha leva o sinistro ao regulador (spec 10.3):** expectations só registram (warn), nunca descartam. PDF ilegível vira flag, e falta de estação vira evidência `fraca`.
-- **Commits:** autor `-c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com"`; mensagem termina com `Co-authored-by: Isaac <no-reply@databricks.com>`. **Nenhum push.**
+- **Commits:** autor `-c user.name="<autor>" -c user.email="<e-mail do autor>"`; mensagem termina com `Co-authored-by: Isaac <no-reply@databricks.com>`. **Nenhum push.**
 - **Antes de comandos que falam com o workspace:** `set -a; source .env; set +a`.
 
 ## Foco de revisão
@@ -222,7 +222,7 @@ Esperado: os 4 testes novos passam e a suíte inteira passa (85 testes).
 
 ```bash
 git add src/regras src/dados_sinteticos/inmet.py src/dados_sinteticos/publicos.py testes/conftest.py testes/test_sinistros.py testes/test_evidencia_pipeline.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: regras de evidência reutilizáveis pelo pipeline, com teste de paridade
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: regras de evidência reutilizáveis pelo pipeline, com teste de paridade
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -306,7 +306,7 @@ Esperado: todos passam.
 
 ```bash
 git add src/ambiente/__init__.py testes/test_gerar.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: contrato do landing (pastas, tabelas bronze e esquema dos avisos)
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: contrato do landing (pastas, tabelas bronze e esquema dos avisos)
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -736,7 +736,7 @@ Esperado: todos os testes passam e `Validation OK!`.
 
 ```bash
 git add src/pipeline recursos testes/test_pipeline_sql.py
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: pipeline Lakeflow bronze e silver (Auto Loader, ai_parse_document, ai_extract, evidência)
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: pipeline Lakeflow bronze e silver (Auto Loader, ai_parse_document, ai_extract, evidência)
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -923,7 +923,7 @@ Esperado: todos passam.
 
 ```bash
 git add scripts/registrar_evidencia.py testes/test_registrar_evidencia.py testes/test_executar_sql.py src/governanca/91_conferir_pipeline.sql src/governanca/92_custo.sql
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: evidência em texto da conferência do pipeline e do custo real
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: evidência em texto da conferência do pipeline e do custo real
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
@@ -986,7 +986,7 @@ Esperado: linhas por produto e SKU (pipeline serverless, AI Functions, SQL wareh
 
 ```bash
 git add evidencias/01-ingestao.md evidencias/09-custo-real.md docs/decisoes-e-tradeoffs.md README.md
-git -c user.name="Gilson Reis" -c user.email="gilson.reis@databricks.com" commit -m "feat: pipeline executado com o lote 1, conferido contra o gabarito e com custo medido
+git -c user.name="<autor>" -c user.email="<e-mail do autor>" commit -m "feat: pipeline executado com o lote 1, conferido contra o gabarito e com custo medido
 
 Co-authored-by: Isaac <no-reply@databricks.com>"
 ```
