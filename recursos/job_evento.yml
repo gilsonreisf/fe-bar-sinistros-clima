@@ -33,6 +33,7 @@ resources:
               paralelo: "16"
               max_tentativas: "3"
               bloco: "200"
+              synced_fila: ${var.catalogo}.${var.prefixo_schema}gold.sinistros_analisados_lb  # Lakebase (D-024)
       environments:
         - environment_key: ml
           spec:

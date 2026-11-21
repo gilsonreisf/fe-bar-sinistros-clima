@@ -29,7 +29,7 @@ from regras.features import COLUNAS_ENTRADA, preparar_entrada
 
 PARAMETROS = {"catalogo": "", "schema_silver": "", "schema_gold": "", "schema_ml": "", "experimento_parecer": "",
               "llm_lote": "", "paralelo": "8", "max_tentativas": "3", "bloco": "200", "limite": "0",
-              "pesos_prioridade": json.dumps(PESOS_PRIORIDADE)}
+              "pesos_prioridade": json.dumps(PESOS_PRIORIDADE), "synced_fila": ""}
 for nome, padrao in PARAMETROS.items():
     dbutils.widgets.text(nome, padrao)  # noqa: F821 (dbutils é injetado pelo Databricks)
 P = {nome: dbutils.widgets.get(nome) for nome in PARAMETROS}  # noqa: F821
@@ -122,5 +122,17 @@ total = kpis[kpis["lote"].isna()].iloc[0].to_dict() if len(kpis) else {}
 resultado = {"resumo_execucao": resumo, "versao_modelo": VERSAO_MODELO, "versao_prompt": VERSAO_PROMPT, "llm": P["llm_lote"],
              "gold_total": {k: (None if pd.isna(v) else (float(v) if isinstance(v, (int, float)) else v))
                             for k, v in total.items() if k != "lote"}}
+
+# Fila do regulador no Lakebase: a synced table é TRIGGERED, então cada análise pede uma atualização (D-024).
+# Sem a synced table (parâmetro vazio ou Lakebase ainda não provisionado), o gold segue valendo e o job não falha.
+if P["synced_fila"]:
+    from databricks.sdk import WorkspaceClient
+    try:
+        _w = WorkspaceClient()
+        _st = _w.api_client.do("GET", f"/api/2.0/postgres/synced_tables/{P['synced_fila']}")
+        _upd = _w.pipelines.start_update(pipeline_id=_st["status"]["pipeline_id"])
+        resultado["synced_fila"] = {"tabela": P["synced_fila"], "update_id": _upd.update_id}
+    except Exception as e:  # noqa: BLE001
+        resultado["synced_fila"] = {"tabela": P["synced_fila"], "erro": f"{type(e).__name__}: {e}"[:300]}
 print(json.dumps(resultado, ensure_ascii=False, indent=2, default=str))
 dbutils.notebook.exit(json.dumps(resultado, ensure_ascii=False, default=str))  # noqa: F821

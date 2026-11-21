@@ -94,10 +94,11 @@ def main(rodadas: str = "5", saida: str = "evidencias/03-lakebase.md") -> None:
                              "WHERE id_decisao = ANY(%s::uuid[])", (ids,)).fetchone()
         linhas_fila = c.execute(f"SELECT count(*) FROM {fila_pg}").fetchone()[0]
     historico = f"{amb.catalogo}.{amb.schema('operacional')}.lb_decisoes_regulador_history"
-    lista = ", ".join(f"'{i}'" for i in ids)
+    # o Lakehouse Sync leva o UUID do Postgres como BINARY (16 bytes): compara pelo hexadecimal, sem hífens
+    lista = ", ".join(f"'{i.replace('-', '')}'" for i in ids)
     linhas_hist, tipos = [], {}
     while time.time() - inicio < 600:
-        linhas_hist = _sql_uc(w, f"SELECT _pg_change_type, count(*) FROM {historico} WHERE CAST(id_decisao AS STRING) IN ({lista}) GROUP BY 1")
+        linhas_hist = _sql_uc(w, f"SELECT _pg_change_type, count(*) FROM {historico} WHERE lower(hex(id_decisao)) IN ({lista}) GROUP BY 1")
         if linhas_hist and sum(int(x[1]) for x in linhas_hist) >= len(ids):
             break
         time.sleep(20)

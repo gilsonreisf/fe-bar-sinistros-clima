@@ -454,3 +454,59 @@ O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os ruli
 - **Custo medido por token:** ~3,2 mil tokens de entrada e ~950 de saída por parecer (o raciocínio pesa). Pela referência de preço do Sonnet, isso dá cerca de US$ 0,02 por parecer, um valor de referência a confirmar no faturamento (`09-custo-real.md`).
 
 **Evidências:** `evidencias/05-avaliacao-genai.md`, `evidencias/05-endpoint-parecer.md` e `notebooks/saidas/avaliacao_parecer.ipynb`.
+
+## D-023: Gold, fast track, prioridade e parecer em lote (fase 5)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a fase 5 transforma cada aviso que chega num sinistro analisado (score, parecer prévio, fast track com motivos, prioridade na fila), sem intervenção. O plano está em `docs/planos/2026-11-21-fase-5-gold-e-orquestracao.md`; os rulings, em `_interno/execucao/ledger-fase-4.md` (tasks 5.x).
+
+**Escolhas:**
+- **Orquestração:** `job_evento` (`recursos/job_evento.yml`) é disparado pela chegada de arquivos em `landing/arquivos/avisos/`. Executa o pipeline (bronze e silver) e depois o notebook `processar_evento`, com `max_concurrent_runs: 1`.
+- **Incremental e idempotente:** a seleção pega só os avisos novos e os pareceres `pendente` ou `invalido` com menos de 3 tentativas. A gravação é um `MERGE` por `id_aviso`, em blocos de 200. Uma reexecução não duplica linha nem paga um segundo parecer, e uma falha no meio não perde os blocos já gravados.
+- **O lote chama `gerar_parecer` direto, e não `ai_query` no endpoint** (desvio da spec, seção 5, por vazão).
+  - O endpoint Small com scale-to-zero atende poucas requisições simultâneas (~6 s cada).
+  - A validação do JSON, o cálculo do valor em código e o trace são os mesmos do endpoint, porque o código é o mesmo.
+  - O endpoint continua servindo o app ("Reanalisar com IA").
+- **LLM do lote = Claude Haiku 5.5**, o mais barato que passou no portão da fase 4 (até 2 p.p. abaixo do Sonnet na `recomendacao_correta`, no mesmo dataset):
+  - recomendação correta de 0,951 nos dois;
+  - Guidelines de 0,874 contra 0,923 do Sonnet (português e tom um pouco piores);
+  - tokens parecidos e ~4,8 s por chamada.
+  - O endpoint do app segue com o Sonnet, porque ali o texto é lido pelo regulador (`evidencias/05-comparacao-llm.md`).
+- **Fast track** (spec 6.3 e D-020) só quando todas as condições valem:
+  - valor ≤ R$ 5 mil, cobertura válida e evidência climática `forte`;
+  - score < 0,2;
+  - recomendação `pagar_integral` com `status_parecer = ok`;
+  - nenhum alerta bloqueante (`apolice_inexistente`, `fora_vigencia`, `datas_incoerentes`, `valor_invalido`, `causa_desconhecida`, `documento_ilegivel`, `extracao_falhou`, `preco_nao_conferido` ou `documento_ausente`).
+  - Dado nulo bloqueia, e cada sinistro guarda a lista de motivos de bloqueio.
+- **Prioridade dos demais:** 0,45 × suspeita + 0,35 × valor (÷ R$ 50 mil, teto 1) + 0,20 × espera (dias ÷ 15, teto 1). Os pesos são parâmetro do job.
+  - A suspeita pesa mais por ser a principal fonte de *leakage*, o valor por concentrar a exposição e a espera por proteger o segurado.
+- **Gold:** `gold.sinistros_analisados` (Change Data Feed ligado, para a synced table do Lakebase) e as visões `fila_regulacao`, `kpis_evento` e `sinistro_detalhe`, recriadas pelo notebook a partir de uma função pura.
+
+**Vazão e cobertura (fato medido):**
+- O FMAPI limita o lote a ~21 pareceres por minuto, mesmo com 16 chamadas em paralelo.
+- A 1ª execução completa estourou o timeout de 3 h com 3.220 de 8.000 pareceres. O timeout subiu para 6 h, e uma nova execução incremental continuou sem repetir os pareceres `ok`.
+- A cobertura final está em `evidencias/05c-gold.md`. **Em produção**, a vazão pede throughput provisionado (ou um endpoint dedicado) para o LLM do lote. Isso é dimensionamento, a calibrar na PoC.
+
+**Teste final honesto:** os lotes 2 a 10 nunca foram vistos no treino nem na avaliação do parecer. O resultado está em `evidencias/04c-teste-final.md`.
+
+## D-024: Lakebase para a operação da regulação (fase 6)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a spec 7.1 pede uma base transacional para a fila do regulador (quem está com cada caso, decisões e reanálises), com os dados analíticos do gold disponíveis em baixa latência e as decisões voltando ao lakehouse.
+
+**Escolhas:**
+- **Projeto Lakebase** `sinistros-clima` (Postgres 17, branch `production`, compute `primary` com scale-to-zero), provisionado por `scripts/provisionar_lakebase.py`, que é idempotente. O DAB ainda não cobre synced tables nem o Lakehouse Sync.
+- **Synced table do gold** (`gold.sinistros_analisados` → `gold.sinistros_analisados_lb`, modo TRIGGERED). No FEVM não há CREATE CATALOG (D-016), então o destino fica no catálogo do projeto, e não num catálogo do Lakebase. Funcionou sem restrição.
+- **Schema `operacao`, escrito pelo app** (`src/lakebase/operacao.py`):
+  - `atribuicoes`: "Assumir próximo" é atômico. A PK de `id_aviso` impede dois reguladores no mesmo caso, e `pg_try_advisory_xact_lock` pula o caso que outro regulador está pegando no mesmo instante. É o efeito do `SKIP LOCKED` sem travar a synced table, que é somente leitura.
+  - `decisoes_regulador`: só inserção, com `id_decisao` (UUID) gerado no cliente e `ON CONFLICT DO NOTHING`. O clique duplo não duplica a decisão (spec 10.3).
+  - `reanalises`: cada "Reanalisar com IA", com o trace.
+  - Todas com REPLICA IDENTITY FULL, requisito do Lakehouse Sync.
+- **Volta ao lakehouse pelo Lakehouse Sync (Beta):** `operacao` → `<catálogo>.operacional.lb_*_history` (histórico SCD2). Estava disponível no workspace, então o plano B (job de cópia) não foi necessário.
+- **Atualização da fila:** a synced table é TRIGGERED, e o `processar_evento` pede uma atualização no fim de cada análise (parâmetro `synced_fila`; sem ela o job não falha). Na 1ª versão isso faltava, e a fila do Postgres ficou com os 20 casos da fumaça.
+- **Fato medido:** o Lakehouse Sync leva o UUID do Postgres para o UC como `BINARY` (16 bytes). Quem lê o histórico compara por `lower(hex(id_decisao))`.
+- **Laço de retorno:** as decisões do regulador chegam ao UC e alimentam a tela de concordância IA × regulador do app. **O retreino** do modelo e do prompt com essas decisões **fica como próximo passo** (corte aceito pelo autor para caber no prazo).
+
+**Evidência:** `evidencias/03-lakebase.md` (dois reguladores assumindo ao mesmo tempo sem repetição, clique duplo sem duplicata e decisões lidas de volta no UC).
