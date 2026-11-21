@@ -6,7 +6,7 @@ from permissoes_app import comandos_pg, comandos_uc
 def test_uc_so_leitura_do_que_o_app_usa():
     cmds = comandos_uc(Ambiente(catalogo="cat", prefixo_schema="p_"), "sp-1")
     texto = "\n".join(cmds)
-    assert "GRANT SELECT ON TABLE cat.p_gold.sinistros_metrics TO `sp-1`" in texto
+    assert "GRANT SELECT ON SCHEMA cat.p_gold TO `sp-1`" in texto  # sobrevive ao CREATE OR REPLACE das visões
     assert "EXECUTE ON FUNCTION cat.p_gold.mascarar_cpf" in texto
     assert "bronze" not in texto and "gabarito" not in texto and "MODIFY" not in texto and "ALL PRIVILEGES" not in texto
 
