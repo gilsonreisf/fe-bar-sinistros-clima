@@ -38,6 +38,7 @@ import {
   numero,
   rotuloMotivo,
   rotuloRecomendacao,
+  verdadeiro,
 } from '../lib/formato';
 
 interface Operacao {
@@ -55,7 +56,7 @@ function Linha({ rotulo, children }: { rotulo: string; children: React.ReactNode
   );
 }
 
-const simNao = (v: unknown) => (v === null || v === undefined ? '—' : v === true || v === 'true' ? 'sim' : 'não');
+const simNao = (v: unknown) => (v === null || v === undefined ? '—' : verdadeiro(v) ? 'sim' : 'não');
 
 export function SinistroPage() {
   const { id = '' } = useParams();
@@ -77,7 +78,7 @@ export function SinistroPage() {
         subtitulo={`${s.municipio} · ${s.causa_declarada} · ${s.ramo} · aviso em ${fmtData(s.data_aviso)} · segurado ${s.cpf_segurado ?? '—'}`}
         acoes={
           <div className="flex gap-2 items-center">
-            {s.fast_track ? <Badge>fast track</Badge> : <Badge variant="outline">fila do regulador</Badge>}
+            {verdadeiro(s.fast_track) ? <Badge>fast track</Badge> : <Badge variant="outline">fila do regulador</Badge>}
             <Badge variant={score >= 0.2 ? 'destructive' : 'secondary'}>suspeita {fmtDec(score)}</Badge>
             <Link to="/fila" className="text-sm text-primary underline underline-offset-4">
               voltar à fila

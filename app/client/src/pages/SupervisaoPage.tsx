@@ -1,12 +1,14 @@
 // IA sob supervisão: a decisão do regulador ao lado da recomendação da IA. As decisões nascem no Lakebase e voltam ao
 // Unity Catalog pelo Lakehouse Sync (gold.regulacao_metrics); as divergências são o insumo do retreino (próximo passo).
-import { Card, CardContent, CardHeader, CardTitle, DataTable, useAnalyticsQuery } from '@databricks/appkit-ui/react';
-import { Erro, Fonte, Kpi, KpiCarregando, Titulo } from '../components/Comum';
-import { fmtBRL, fmtDec, fmtInt, fmtPct, rotuloRecomendacao, texto } from '../lib/formato';
+import { Card, CardContent, CardHeader, CardTitle, useAnalyticsQuery } from '@databricks/appkit-ui/react';
+import { Erro, Fonte, Kpi, KpiCarregando, TabelaSimples, Titulo } from '../components/Comum';
+import { fmtBRL, fmtDec, fmtInt, fmtPct, rotuloRecomendacao } from '../lib/formato';
 
 export function SupervisaoPage() {
   const { data, loading, error } = useAnalyticsQuery('supervisao_kpis', {});
   const k = data?.[0];
+  const matriz = useAnalyticsQuery('supervisao_matriz', {});
+  const parecer = useAnalyticsQuery('supervisao_parecer', {});
 
   return (
     <div className="space-y-6">
@@ -42,17 +44,18 @@ export function SupervisaoPage() {
             <CardTitle className="text-base">Onde o regulador concorda e onde diverge</CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTable
-              queryKey="supervisao_matriz"
-              parameters={{}}
-              pageSize={10}
-              transform={(linhas: Array<Record<string, unknown>>) =>
-                linhas.map((l) => ({
-                  'Recomendação da IA': rotuloRecomendacao(l.recomendacao_ia),
-                  'Decisão do regulador': rotuloRecomendacao(l.decisao_regulador),
-                  Decisões: fmtInt(l.decisoes),
-                }))
-              }
+            <TabelaSimples
+              linhas={matriz.data}
+              carregando={matriz.loading}
+              erro={matriz.error}
+              vazio="As decisões aparecem aqui alguns minutos depois de registradas no app (Lakehouse Sync)."
+              chave={(l) => `${l.recomendacao_ia}-${l.decisao_regulador}`}
+              colunas={[
+                { titulo: 'Recomendação da IA', valor: (l) => rotuloRecomendacao(l.recomendacao_ia) },
+                { titulo: 'Decisão do regulador', valor: (l) => rotuloRecomendacao(l.decisao_regulador) },
+                { titulo: 'Concordou', valor: (l) => (l.recomendacao_ia === l.decisao_regulador ? 'sim' : 'não') },
+                { titulo: 'Decisões', valor: (l) => fmtInt(l.decisoes), direita: true },
+              ]}
             />
           </CardContent>
         </Card>
@@ -61,20 +64,20 @@ export function SupervisaoPage() {
             <CardTitle className="text-base">Parecer em lote: versões em produção e pendências</CardTitle>
           </CardHeader>
           <CardContent>
-            <DataTable
-              queryKey="supervisao_parecer"
-              parameters={{}}
-              pageSize={10}
-              transform={(linhas: Array<Record<string, unknown>>) =>
-                linhas.map((l) => ({
-                  LLM: texto(l.llm),
-                  Prompt: `v${texto(l.versao_prompt)}`,
-                  'Modelo de suspeita': `v${texto(l.versao_modelo)}`,
-                  Status: texto(l.status_parecer),
-                  Avisos: fmtInt(l.avisos),
-                  'Confiança média': fmtDec(l.confianca_media),
-                }))
-              }
+            <TabelaSimples
+              linhas={parecer.data}
+              carregando={parecer.loading}
+              erro={parecer.error}
+              vazio="Nenhum parecer gerado ainda."
+              chave={(l, i) => `${l.llm}-${l.versao_prompt}-${l.status_parecer}-${i}`}
+              colunas={[
+                { titulo: 'LLM', valor: (l) => l.llm },
+                { titulo: 'Prompt', valor: (l) => `v${l.versao_prompt}` },
+                { titulo: 'Modelo de suspeita', valor: (l) => `v${l.versao_modelo}` },
+                { titulo: 'Status', valor: (l) => l.status_parecer },
+                { titulo: 'Avisos', valor: (l) => fmtInt(l.avisos), direita: true },
+                { titulo: 'Confiança média', valor: (l) => fmtDec(l.confianca_media), direita: true },
+              ]}
             />
           </CardContent>
         </Card>

@@ -8,6 +8,9 @@ const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 export const texto = (v: unknown): string =>
   v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v as string | number | boolean);
 
+/** Booleano do SQL (JSON_ARRAY traz 'true'/'false' como texto). */
+export const verdadeiro = (v: unknown): boolean => v === true || v === 'true';
+
 export const numero = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v));
 export const fmtBRL = (v: unknown, centavos = false) => {
   const n = numero(v);

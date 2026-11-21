@@ -1,12 +1,13 @@
 // Painel do evento (diretoria e coordenação): quanto chegou, quanto já saiu pelo fast track, quanto espera na fila e
 // onde está o risco. Fonte: metric view gold.sinistros_metrics (definições únicas no UC; D-025).
-import { BarChart, Card, CardContent, CardHeader, CardTitle, DataTable, DonutChart, useAnalyticsQuery } from '@databricks/appkit-ui/react';
-import { Erro, Fonte, Kpi, KpiCarregando, Titulo } from '../components/Comum';
-import { fmtBRL, fmtInt, fmtPct, texto } from '../lib/formato';
+import { BarChart, Card, CardContent, CardHeader, CardTitle, DonutChart, useAnalyticsQuery } from '@databricks/appkit-ui/react';
+import { Erro, Fonte, Kpi, KpiCarregando, TabelaSimples, Titulo } from '../components/Comum';
+import { fmtBRL, fmtInt, fmtPct } from '../lib/formato';
 
 export function PainelPage() {
   const { data, loading, error } = useAnalyticsQuery('painel_kpis', {});
   const k = data?.[0];
+  const mun = useAnalyticsQuery('painel_municipios', {});
 
   return (
     <div className="space-y-6">
@@ -61,7 +62,7 @@ export function PainelPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Mais da metade dos avisos sai pelo fast track em cada lote</CardTitle>
+            <CardTitle className="text-base">Cerca de metade dos avisos de cada lote sai pelo fast track</CardTitle>
           </CardHeader>
           <CardContent>
             <BarChart
@@ -101,19 +102,19 @@ export function PainelPage() {
           <CardTitle className="text-base">Municípios com maior exposição</CardTitle>
         </CardHeader>
         <CardContent>
-          <DataTable
-            queryKey="painel_municipios"
-            parameters={{}}
-            pageSize={10}
-            transform={(linhas: Array<Record<string, unknown>>) =>
-              linhas.map((l) => ({
-                Município: texto(l.municipio),
-                Avisos: fmtInt(l.avisos),
-                'Valor reclamado': fmtBRL(l.valor_reclamado),
-                Suspeitos: fmtInt(l.suspeitos),
-                'Fast track': fmtPct(l.pct_fast_track),
-              }))
-            }
+          <TabelaSimples
+            linhas={mun.data}
+            carregando={mun.loading}
+            erro={mun.error}
+            vazio="Os municípios aparecem quando o primeiro lote for analisado."
+            chave={(l) => String(l.municipio)}
+            colunas={[
+              { titulo: 'Município', valor: (l) => l.municipio },
+              { titulo: 'Avisos', valor: (l) => fmtInt(l.avisos), direita: true },
+              { titulo: 'Valor reclamado', valor: (l) => fmtBRL(l.valor_reclamado), direita: true },
+              { titulo: 'Suspeitos', valor: (l) => fmtInt(l.suspeitos), direita: true },
+              { titulo: 'Fast track', valor: (l) => fmtPct(l.pct_fast_track), direita: true },
+            ]}
           />
         </CardContent>
       </Card>

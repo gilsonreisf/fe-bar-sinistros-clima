@@ -46,8 +46,8 @@ resources:
             value_from: serving-endpoint
           - name: FE_BAR_CATALOGO
             value: ${var.catalogo}
-          - name: FE_BAR_PREFIXO_SCHEMA
-            value: ${var.prefixo_schema}
+          # FE_BAR_PREFIXO_SCHEMA: o app não aceita variável vazia; com prefixo, acrescente aqui
+          # `- name: FE_BAR_PREFIXO_SCHEMA` / `value: ${var.prefixo_schema}`
           - name: FE_BAR_GENIE_SPACE_ID
             value: ${var.genie_space_id}
       resources:

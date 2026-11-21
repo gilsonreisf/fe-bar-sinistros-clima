@@ -10,6 +10,12 @@ import {
   EmptyHeader,
   EmptyTitle,
   Skeleton,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@databricks/appkit-ui/react';
 import { AlertTriangle } from 'lucide-react';
 
@@ -71,5 +77,49 @@ export function Titulo({ titulo, subtitulo, acoes }: { titulo: string; subtitulo
       </div>
       {acoes}
     </div>
+  );
+}
+
+export interface Coluna<L> {
+  titulo: string;
+  valor: (linha: L) => ReactNode;
+  direita?: boolean;
+}
+
+/** Tabela pequena (até algumas dezenas de linhas já agregadas no SQL), com carregamento, erro e vazio. */
+export function TabelaSimples<L>({ linhas, colunas, carregando, erro, vazio, chave }: {
+  linhas: L[] | null | undefined;
+  colunas: Coluna<L>[];
+  carregando: boolean;
+  erro: string | null;
+  vazio: string;
+  chave: (linha: L, i: number) => string;
+}) {
+  if (erro) return <Erro mensagem={erro} />;
+  if (carregando || !linhas) return <Skeleton className="h-48 w-full" />;
+  if (linhas.length === 0) return <Vazio titulo="Sem dados ainda" descricao={vazio} />;
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {colunas.map((c) => (
+            <TableHead key={c.titulo} className={c.direita ? 'text-right' : ''}>
+              {c.titulo}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {linhas.map((l, i) => (
+          <TableRow key={chave(l, i)}>
+            {colunas.map((c) => (
+              <TableCell key={c.titulo} className={c.direita ? 'text-right tabular-nums' : ''}>
+                {c.valor(l)}
+              </TableCell>
+            ))}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
