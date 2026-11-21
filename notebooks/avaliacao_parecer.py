@@ -19,7 +19,8 @@
 # MAGIC **O que este notebook faz.**
 # MAGIC 1. Dataset estratificado dos lotes de validação do evento, com o gabarito como expectativa, salvo como MLflow
 # MAGIC    Evaluation Dataset no UC.
-# MAGIC 2. Prompts v1 (básico) e v2 (regras explícitas e exemplos) versionados no Prompt Registry do UC.
+# MAGIC 2. Prompts v1 (básico) e v2 (regras explícitas e exemplos) versionados no UC (tabela Delta, porque o
+# MAGIC    Prompt Registry não está habilitado no workspace; D-022).
 # MAGIC 3. `mlflow.genai.evaluate()` dos dois prompts, com métricas de código e juízes LLM (`Correctness` e `Guidelines`).
 # MAGIC 4. Portão de qualidade: o alias `producao` do prompt só muda se `recomendacao_correta` não piorar.
 # MAGIC 5. Registro de `ml.parecer_sinistro` (*models from code*, com o prompt de produção congelado) e publicação do
@@ -134,25 +135,43 @@ display(amostra.groupby("padrao").size().rename("casos").reset_index())  # noqa:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 2. Prompts no Prompt Registry (UC)
+# MAGIC ## 2. Prompts versionados no UC
 # MAGIC
-# MAGIC Um prompt só ganha versão nova se o texto mudou; assim, reexecutar não multiplica versões iguais.
+# MAGIC O Prompt Registry do MLflow não está habilitado neste workspace (`FEATURE_DISABLED`; D-022). Os prompts ficam
+# MAGIC numa tabela Delta do UC (`ml.prompt_parecer`), com as mesmas operações:
+# MAGIC - versão nova só quando o texto muda (sha256);
+# MAGIC - alias de produção;
+# MAGIC - métrica de qualidade por versão;
+# MAGIC - o histórico Delta da tabela é a trilha de auditoria.
 
 # COMMAND ----------
 
-def _carregar(versao: int):
-    p = mlflow.genai.load_prompt(f"prompts:/{NOME_PROMPT}/{versao}", allow_missing=True)
-    return None if p is None else p.template
+ESQUEMA_PROMPTS = ("versao BIGINT, rotulo STRING, template STRING, sha256 STRING, mensagem STRING, criado_em STRING, "
+                   "recomendacao_correta DOUBLE, producao BOOLEAN")
 
 
+def _ler_prompts() -> pd.DataFrame:
+    if not spark.catalog.tableExists(NOME_PROMPT):  # noqa: F821
+        return av.tabela_prompts_vazia()
+    return spark.table(NOME_PROMPT).toPandas()[av.COLUNAS_PROMPTS]  # noqa: F821
+
+
+def _gravar_prompts(tabela: pd.DataFrame) -> None:
+    (spark.createDataFrame(tabela[av.COLUNAS_PROMPTS], ESQUEMA_PROMPTS)  # noqa: F821
+     .write.mode("overwrite").saveAsTable(NOME_PROMPT))
+    spark.sql(f"COMMENT ON TABLE {NOME_PROMPT} IS 'Versões do prompt do parecer prévio (uma linha por versão; producao = "  # noqa: F821
+              "alias de produção). Histórico Delta = auditoria (D-022).'")
+
+
+TABELA_PROMPTS = _ler_prompts()
 VERSOES_PROMPT = {}
+agora = pd.Timestamp.now(tz="UTC").isoformat()
 for chave, texto in PROMPTS.items():
-    VERSOES_PROMPT[chave], nova = av.registrar_prompt_se_mudou(
-        _carregar, lambda t=texto, c=chave: mlflow.genai.register_prompt(
-            name=NOME_PROMPT, template=t, tags={"rotulo": c},
-            commit_message=f"Parecer prévio {c}: " + ("básico" if c == "v1" else "regras explícitas, ordem e exemplos")).version,
-        texto)
+    mensagem = f"Parecer prévio {chave}: " + ("básico" if chave == "v1" else "regras explícitas, ordem e exemplos")
+    TABELA_PROMPTS, VERSOES_PROMPT[chave], nova = av.registrar_versao(TABELA_PROMPTS, texto, chave, mensagem, agora)
     print(f"{chave}: versão {VERSOES_PROMPT[chave]} ({'nova' if nova else 'reaproveitada'})")
+if PUBLICAR:
+    _gravar_prompts(TABELA_PROMPTS)
 
 # COMMAND ----------
 
@@ -248,6 +267,7 @@ for chave, versao in VERSOES_PROMPT.items():
         mlflow.log_params({"prompt": NOME_PROMPT, "prompt_versao": versao, "prompt_rotulo": chave,
                            "llm": P["endpoint_llm"], "casos": len(registros), "dataset": NOME_DATASET,
                            "lotes_validacao": P["lotes_validacao"], **{f"versao_{k}": v for k, v in VERSOES.items()}})
+        mlflow.log_text(template, f"prompt_{chave}_v{versao}.txt")  # o texto avaliado fica junto do run
         resultado = mlflow.genai.evaluate(data=dataset, predict_fn=predict_fn, scorers=SCORERS)
         t = _tabela(resultado)
         pagamentos = t[t["esperado"].str.startswith("pagar")]
@@ -268,8 +288,8 @@ for chave, versao in VERSOES_PROMPT.items():
     RESULTADOS[chave] = {**{k: float(v) for k, v in resultado.metrics.items()}, **extras}
     TABELAS[chave] = {"por_padrao": por_padrao, "erros": erros, "matriz": matriz, "tabela": t}
     if PUBLICAR:  # a métrica gravada no prompt é sempre a do LLM de produção
-        mlflow.genai.set_prompt_version_tag(NOME_PROMPT, versao, "recomendacao_correta",
-                                            f"{RESULTADOS[chave]['recomendacao_correta/mean']:.4f}")
+        TABELA_PROMPTS = av.gravar_metrica(TABELA_PROMPTS, versao, RESULTADOS[chave]["recomendacao_correta/mean"])
+
     print(f"prompt {chave} (v{versao}): " + ", ".join(f"{k}={v:.3f}" for k, v in sorted(RESULTADOS[chave].items())))
 
 comparacao = pd.DataFrame(RESULTADOS).round(3).rename_axis("metrica").reset_index()
@@ -314,21 +334,22 @@ if not PUBLICAR:
 
 metrica = {c: RESULTADOS[c]["recomendacao_correta/mean"] for c in VERSOES_PROMPT}
 candidato = max(VERSOES_PROMPT, key=lambda c: (metrica[c], c == "v2"))
-atual = mlflow.genai.load_prompt(f"prompts:/{NOME_PROMPT}@producao", allow_missing=True)
+atual = av.versao_producao(TABELA_PROMPTS)
 avaliadas = {v: c for c, v in VERSOES_PROMPT.items()}
 if atual is None:
     metrica_atual = None
-elif int(atual.version) in avaliadas:
-    metrica_atual = metrica[avaliadas[int(atual.version)]]
+elif int(atual["versao"]) in avaliadas:
+    metrica_atual = metrica[avaliadas[int(atual["versao"])]]
 else:
-    metrica_atual = float((atual.tags or {}).get("recomendacao_correta", "nan"))
+    metrica_atual = float(atual["recomendacao_correta"])
 PROMOVER = metrica_atual is None or not metrica_atual == metrica_atual or metrica[candidato] >= metrica_atual
 if PROMOVER:
-    mlflow.genai.set_prompt_alias(NOME_PROMPT, "producao", VERSOES_PROMPT[candidato])
-PRODUCAO = mlflow.genai.load_prompt(f"prompts:/{NOME_PROMPT}@producao")
+    TABELA_PROMPTS = av.definir_producao(TABELA_PROMPTS, VERSOES_PROMPT[candidato])
+_gravar_prompts(TABELA_PROMPTS)
+PRODUCAO = av.versao_producao(TABELA_PROMPTS)
 print(f"candidato {candidato} (v{VERSOES_PROMPT[candidato]}, {metrica[candidato]:.3f}); produção anterior: "
-      f"{None if atual is None else atual.version} ({metrica_atual}); promovido: {PROMOVER}; "
-      f"produção agora: v{PRODUCAO.version}")
+      f"{None if atual is None else atual['versao']} ({metrica_atual}); promovido: {PROMOVER}; "
+      f"produção agora: v{PRODUCAO['versao']}")
 
 # COMMAND ----------
 
@@ -345,11 +366,11 @@ print(f"candidato {candidato} (v{VERSOES_PROMPT[candidato]}, {metrica[candidato]
 
 pasta = Path(tempfile.mkdtemp())
 (pasta / "config.json").write_text(json.dumps({
-    "endpoint_llm": P["endpoint_llm"], "nome_prompt": NOME_PROMPT, "versao_prompt": str(PRODUCAO.version),
-    "template": PRODUCAO.template}, ensure_ascii=False), encoding="utf-8")
+    "endpoint_llm": P["endpoint_llm"], "nome_prompt": NOME_PROMPT, "versao_prompt": str(PRODUCAO['versao']),
+    "template": PRODUCAO['template']}, ensure_ascii=False), encoding="utf-8")
 exemplo = pd.DataFrame({"entrada_json": [amostra.iloc[0].entrada_json], "score_suspeita": [float(amostra.iloc[0].score_suspeita)],
                         "fatores_suspeita": [amostra.iloc[0].fatores_suspeita]})
-with mlflow.start_run(run_name=f"registro_parecer_prompt_v{PRODUCAO.version}") as run:
+with mlflow.start_run(run_name=f"registro_parecer_prompt_v{PRODUCAO['versao']}") as run:
     RUN_REGISTRO = run.info.run_id
     info = mlflow.pyfunc.log_model(
         name="parecer", python_model=str(Path(parecer.__file__).with_name("modelo_pyfunc.py")),
@@ -362,8 +383,8 @@ with mlflow.start_run(run_name=f"registro_parecer_prompt_v{PRODUCAO.version}") a
 VERSAO_MODELO = str(info.registered_model_version)
 cliente = MlflowClient(registry_uri="databricks-uc")
 cliente.set_registered_model_alias(NOME_MODELO, "producao", VERSAO_MODELO)
-for chave, valor in {"prompt": NOME_PROMPT, "versao_prompt": str(PRODUCAO.version), "llm": P["endpoint_llm"],
-                     "recomendacao_correta": f"{metrica[avaliadas.get(int(PRODUCAO.version), candidato)]:.4f}",
+for chave, valor in {"prompt": NOME_PROMPT, "versao_prompt": str(PRODUCAO['versao']), "llm": P["endpoint_llm"],
+                     "recomendacao_correta": f"{metrica[avaliadas.get(int(PRODUCAO['versao']), candidato)]:.4f}",
                      "dataset": NOME_DATASET}.items():
     cliente.set_model_version_tag(NOME_MODELO, VERSAO_MODELO, chave, valor)
 cliente.update_registered_model(NOME_MODELO, description=(
@@ -371,7 +392,7 @@ cliente.update_registered_model(NOME_MODELO, description=(
     "silver.entrada_parecer + score e fatores do modelo de suspeita. Saída: recomendação, valor sugerido (calculado em "
     "código), motivos, cláusulas, confiança, status e trace. Alias producao = versão servida."))
 saida_registrado = mlflow.pyfunc.load_model(f"models:/{NOME_MODELO}/{VERSAO_MODELO}").predict(exemplo)
-print(f"registrado: {NOME_MODELO} versão {VERSAO_MODELO} com o prompt v{PRODUCAO.version}; teste: "
+print(f"registrado: {NOME_MODELO} versão {VERSAO_MODELO} com o prompt v{PRODUCAO['versao']}; teste: "
       f"{saida_registrado.iloc[0][['recomendacao', 'valor_sugerido', 'status_parecer']].to_dict()}")
 
 w = WorkspaceClient()
@@ -383,7 +404,7 @@ print(f"endpoint {P['endpoint_parecer']}: {ACAO_ENDPOINT} com {NOME_MODELO} v{VE
 # COMMAND ----------
 
 resultado = {"dataset": NOME_DATASET, "casos": len(registros), "prompt": NOME_PROMPT,
-             "versoes_prompt": VERSOES_PROMPT, "prompt_producao": int(PRODUCAO.version), "promovido": PROMOVER,
+             "versoes_prompt": VERSOES_PROMPT, "prompt_producao": int(PRODUCAO['versao']), "promovido": PROMOVER,
              "modelo": NOME_MODELO, "versao_modelo": VERSAO_MODELO, "endpoint": P["endpoint_parecer"],
              "acao_endpoint": ACAO_ENDPOINT, "runs": RUNS, "run_registro": RUN_REGISTRO,
              "metricas": {c: {k: round(v, 4) for k, v in m.items()} for c, m in RESULTADOS.items()}}

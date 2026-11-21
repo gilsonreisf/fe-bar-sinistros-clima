@@ -40,7 +40,7 @@ def renderizar_evidencia_parecer(quando: str, resultado: dict, por_padrao: dict[
          "## Configuração", "",
          f"- Dataset de avaliação (MLflow Evaluation Dataset no UC): `{resultado['dataset']}`, {resultado['casos']} casos "
          "estratificados por padrão dos lotes de validação do evento.",
-         f"- Prompt no Prompt Registry: `{resultado['prompt']}`. Versões avaliadas: "
+         f"- Prompt versionado no UC (tabela Delta; o Prompt Registry não está habilitado no workspace, D-022): `{resultado['prompt']}`. Versões avaliadas: "
          + ", ".join(f"{c} = v{v}" for c, v in resultado["versoes_prompt"].items())
          + f". Alias `producao` → **v{resultado['prompt_producao']}** (promovido nesta execução: {resultado['promovido']}).",
          f"- Modelo registrado: `{resultado['modelo']}` versão **{resultado['versao_modelo']}** (aliases: "

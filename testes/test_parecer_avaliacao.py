@@ -4,8 +4,7 @@ import pandas as pd
 import pytest
 
 from parecer.avaliacao import (FATOS_POR_PADRAO, amostra_estratificada, cita_clausula, expectativas, json_valido,
-                               padrao_identificado, recomendacao_correta, registrar_prompt_se_mudou,
-                               valor_dentro_tolerancia)
+                               padrao_identificado, recomendacao_correta, valor_dentro_tolerancia)
 
 PADROES = ["legitimo_simples", "legitimo_complexo", "sem_evento_climatico", "orcamento_inflado", "sem_cobertura",
            "apolice_recente", "dano_preexistente", "prestador_concentrado"]
@@ -47,17 +46,19 @@ def test_valor_dentro_da_tolerancia():
     assert valor_dentro_tolerancia(0.0, 0.0) and valor_dentro_tolerancia(0.05, 0.0) and not valor_dentro_tolerancia(50.0, 0.0)
 
 
-def test_registrar_prompt_so_quando_o_texto_muda():
-    existentes = {1: "texto v1", 2: "texto v2"}
-    registrados = []
+def test_registro_de_prompts_versiona_so_quando_o_texto_muda_e_tem_um_alias():
+    from parecer.avaliacao import (definir_producao, gravar_metrica, registrar_versao, tabela_prompts_vazia,
+                                   versao_producao)
 
-    def carregar(versao):
-        return existentes.get(versao)
-
-    def registrar():
-        registrados.append(1)
-        existentes[len(existentes) + 1] = "texto novo"
-        return len(existentes)
-
-    assert registrar_prompt_se_mudou(carregar, registrar, "texto v2") == (2, False) and registrados == []
-    assert registrar_prompt_se_mudou(carregar, registrar, "texto novo") == (3, True) and registrados == [1]
+    t = tabela_prompts_vazia()
+    t, v1, nova1 = registrar_versao(t, "texto 1", "v1", "básico", "2026-11-21")
+    t, v2, nova2 = registrar_versao(t, "texto 2", "v2", "regras", "2026-11-21")
+    t, de_novo, nova3 = registrar_versao(t, "texto 1", "v1", "básico", "2026-11-22")
+    assert (v1, v2, de_novo) == (1, 2, 1) and (nova1, nova2, nova3) == (True, True, False) and len(t) == 2
+    assert versao_producao(t) is None
+    t = definir_producao(gravar_metrica(t, 2, 0.9), 2)
+    assert versao_producao(t)["versao"] == 2 and versao_producao(t)["recomendacao_correta"] == 0.9
+    t = definir_producao(t, 1)
+    assert t["producao"].sum() == 1 and versao_producao(t)["versao"] == 1
+    with pytest.raises(ValueError):
+        definir_producao(t, 7)

@@ -61,7 +61,7 @@ def test_job_do_parecer_sem_nomes_fixos_e_com_parametros():
 def test_notebook_do_parecer_avalia_registra_e_publica():
     texto = NOTEBOOK_PARECER.read_text(encoding="utf-8")
     assert texto.startswith("# Databricks notebook source") and "dbutils.notebook.exit(" in texto
-    for trecho in ("mlflow.genai.evaluate(", "Correctness()", "Guidelines(", "set_prompt_alias(", "resources=[",
+    for trecho in ("mlflow.genai.evaluate(", "Correctness()", "Guidelines(", "av.definir_producao(", "resources=[",
                    "publicar_endpoint(", "gabarito_evento_2026.csv"):
         assert trecho in texto, trecho
     assert "fe_bar_sinistros_catalog" not in texto and "/Users/" not in texto

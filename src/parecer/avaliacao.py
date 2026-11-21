@@ -76,13 +76,46 @@ def valor_dentro_tolerancia(valor: float, devido: float, tolerancia: float = TOL
     return abs(float(valor) - float(devido)) <= tolerancia * max(abs(float(devido)), 1.0)
 
 
-def registrar_prompt_se_mudou(carregar_versao, registrar, template: str, max_versoes: int = 200) -> tuple[int, bool]:
-    """(versão, nova?). Reaproveita a versão com o mesmo texto; só registra uma versão nova se o texto mudou, para que
-    reexecutar o job não multiplique versões iguais no Prompt Registry."""
-    for versao in range(1, max_versoes + 1):
-        texto = carregar_versao(versao)
-        if texto is None:
-            break
-        if texto == template:
-            return versao, False
-    return int(registrar()), True
+# Registro de prompts em tabela Delta do UC (D-022): o Prompt Registry do MLflow não está habilitado no FEVM
+# (FEATURE_DISABLED). Mesmas operações: versão nova só quando o texto muda, alias de produção e métrica por versão; o
+# histórico Delta da tabela é a trilha de auditoria. Funções puras sobre um DataFrame pequeno (uma linha por versão).
+COLUNAS_PROMPTS = ["versao", "rotulo", "template", "sha256", "mensagem", "criado_em", "recomendacao_correta", "producao"]
+
+
+def tabela_prompts_vazia() -> pd.DataFrame:
+    return pd.DataFrame({c: pd.Series(dtype=t) for c, t in zip(COLUNAS_PROMPTS, (
+        "int64", "object", "object", "object", "object", "object", "float64", "bool"))})
+
+
+def registrar_versao(tabela: pd.DataFrame, template: str, rotulo: str, mensagem: str, agora: str) -> tuple[pd.DataFrame, int, bool]:
+    """(tabela, versão, nova?). Reaproveita a versão com o mesmo texto (sha256); senão, cria a próxima."""
+    import hashlib
+
+    sha = hashlib.sha256(template.encode("utf-8")).hexdigest()
+    iguais = tabela[tabela["sha256"] == sha]
+    if len(iguais):
+        return tabela, int(iguais["versao"].iloc[0]), False
+    versao = int(tabela["versao"].max()) + 1 if len(tabela) else 1
+    linha = pd.DataFrame([{"versao": versao, "rotulo": rotulo, "template": template, "sha256": sha, "mensagem": mensagem,
+                           "criado_em": agora, "recomendacao_correta": float("nan"), "producao": False}])
+    return pd.concat([tabela, linha], ignore_index=True)[COLUNAS_PROMPTS], versao, True
+
+
+def gravar_metrica(tabela: pd.DataFrame, versao: int, valor: float) -> pd.DataFrame:
+    t = tabela.copy()
+    t.loc[t["versao"] == versao, "recomendacao_correta"] = float(valor)
+    return t
+
+
+def versao_producao(tabela: pd.DataFrame) -> dict | None:
+    linhas = tabela[tabela["producao"].astype(bool)]
+    return None if linhas.empty else linhas.iloc[0].to_dict()
+
+
+def definir_producao(tabela: pd.DataFrame, versao: int) -> pd.DataFrame:
+    """Alias único: só uma versão fica com producao = verdadeiro."""
+    if not (tabela["versao"] == versao).any():
+        raise ValueError(f"versão {versao} não existe no registro de prompts")
+    t = tabela.copy()
+    t["producao"] = t["versao"] == versao
+    return t
