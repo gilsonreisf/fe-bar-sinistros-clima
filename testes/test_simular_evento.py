@@ -46,3 +46,23 @@ def test_geracao_diferente_da_publicada_falha(tmp_path):
     publicar_lotes(s, 1, lambda origem, rel: None, estado, geracao="g1")
     with pytest.raises(RuntimeError, match="geração"):
         publicar_lotes(s, 1, lambda origem, rel: None, estado, geracao="g2")
+
+
+def test_envio_paralelo_dos_pdfs_e_avisos_so_depois(tmp_path):
+    """Os PDFs do lote sobem em paralelo (eram ~7 min por lote); o aviso só sobe depois de TODOS os PDFs do lote."""
+    import threading
+    import time
+
+    s = _staging(tmp_path)
+    for i in range(2, 30):
+        (s / f"lote_01/documentos/AV-{i}_orcamento.pdf").write_bytes(b"%PDF")
+    ordem, threads, trava = [], set(), threading.Lock()
+
+    def enviar(origem, rel):
+        time.sleep(0.01)
+        with trava:
+            ordem.append(rel)
+            threads.add(threading.get_ident())
+
+    publicar_lotes(s, 1, enviar, tmp_path / "estado.json", paralelo=8)
+    assert ordem[-1] == "avisos/avisos_lote_01.jsonl" and len(ordem) == 30 and len(threads) > 1

@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
@@ -33,7 +34,7 @@ def impressao_geracao(saida: Path) -> str:
 
 
 def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str], None], estado: Path,
-                   geracao: str | None = None) -> list[str]:
+                   geracao: str | None = None, paralelo: int = 1) -> list[str]:
     anterior = json.loads(estado.read_text()) if estado.exists() else {}
     if geracao and anterior.get("geracao") and anterior["geracao"] != geracao:
         raise RuntimeError(f"a geração mudou desde a última publicação neste destino ({anterior['geracao']} → {geracao}); "
@@ -41,9 +42,12 @@ def publicar_lotes(staging: Path, quantidade: int, enviar: Callable[[Path, str],
     publicados = anterior.get("publicados", [])
     pendentes = [p for p in sorted(staging.glob("lote_*")) if p.is_dir() and p.name not in publicados][:quantidade]
     for lote in pendentes:
-        for pasta in ("documentos", "avisos"):  # documentos primeiro: quando o aviso chega, o PDF já existe
-            for arquivo in sorted((lote / pasta).iterdir()):
-                enviar(arquivo, f"{pasta}/{arquivo.name}")
+        # documentos primeiro (em paralelo) e só depois os avisos: quando o aviso chega, todos os PDFs já existem
+        documentos = sorted((lote / "documentos").iterdir())
+        with ThreadPoolExecutor(max_workers=max(1, paralelo)) as pool:
+            list(pool.map(lambda a: enviar(a, f"documentos/{a.name}"), documentos))  # list(): propaga erros
+        for arquivo in sorted((lote / "avisos").iterdir()):
+            enviar(arquivo, f"avisos/{arquivo.name}")
         publicados.append(lote.name)
         estado.write_text(json.dumps({"geracao": geracao or anterior.get("geracao"), "publicados": publicados}, indent=2))
         print(f"publicado: {lote.name}")
@@ -73,6 +77,7 @@ def main() -> None:
     p.add_argument("--lotes", type=int, default=1)
     p.add_argument("--saida", default="_saida")
     p.add_argument("--destino", default="volume", help="'volume' ou 'local:<diretório>'")
+    p.add_argument("--paralelo", type=int, default=16, help="envios simultâneos de PDFs")
     args = p.parse_args()
     staging = RAIZ / args.saida / "_staging"
     if args.destino == "volume":
@@ -81,7 +86,8 @@ def main() -> None:
     else:
         destino = str(Path(args.destino.split(":", 1)[1]).resolve())
         enviar = enviar_local(Path(destino))
-    publicar_lotes(staging, args.lotes, enviar, arquivo_estado(staging, destino), impressao_geracao(RAIZ / args.saida))
+    publicar_lotes(staging, args.lotes, enviar, arquivo_estado(staging, destino), impressao_geracao(RAIZ / args.saida),
+                   paralelo=args.paralelo)
 
 
 if __name__ == "__main__":
