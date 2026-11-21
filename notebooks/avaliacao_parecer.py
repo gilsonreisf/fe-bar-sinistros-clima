@@ -62,7 +62,8 @@ from parecer.prompts import PROMPTS
 from regras.features import COLUNAS_ENTRADA, preparar_entrada
 
 PARAMETROS = {"catalogo": "", "schema_silver": "", "schema_ml": "", "experimento": "", "endpoint_llm": "",
-              "endpoint_parecer": "", "lotes_validacao": "1", "max_por_padrao": "25", "publicar": "sim"}
+              "endpoint_parecer": "", "lotes_validacao": "1", "max_por_padrao": "25", "publicar": "sim",
+              "prompts": "v1,v2"}
 for nome, padrao in PARAMETROS.items():
     dbutils.widgets.text(nome, padrao)  # noqa: F821 (dbutils é injetado pelo Databricks)
 P = {nome: dbutils.widgets.get(nome) for nome in PARAMETROS}  # noqa: F821
@@ -256,7 +257,9 @@ def _figura_confusao(t: pd.DataFrame, titulo: str):
 
 
 RESULTADOS, TABELAS, RUNS = {}, {}, {}
-for chave, versao in VERSOES_PROMPT.items():
+AVALIAR = [c.strip() for c in P["prompts"].split(",") if c.strip()]
+assert PUBLICAR is False or AVALIAR == list(PROMPTS), "a execução publicada avalia todos os prompts (v1 e v2)"
+for chave, versao in {c: v for c, v in VERSOES_PROMPT.items() if c in AVALIAR}.items():
     template = PROMPTS[chave]
 
     def predict_fn(entrada, _template=template, _versao=str(versao)):
@@ -294,7 +297,10 @@ for chave, versao in VERSOES_PROMPT.items():
 
 comparacao = pd.DataFrame(RESULTADOS).round(3).rename_axis("metrica").reset_index()
 display(comparacao)  # noqa: F821
-display(TABELAS["v1"]["por_padrao"].merge(TABELAS["v2"]["por_padrao"], on=["padrao", "casos"], suffixes=("_v1", "_v2")))  # noqa: F821
+if {"v1", "v2"} <= set(TABELAS):
+    display(TABELAS["v1"]["por_padrao"].merge(TABELAS["v2"]["por_padrao"], on=["padrao", "casos"], suffixes=("_v1", "_v2")))  # noqa: F821
+else:
+    display(next(iter(TABELAS.values()))["por_padrao"])  # noqa: F821
 
 # COMMAND ----------
 

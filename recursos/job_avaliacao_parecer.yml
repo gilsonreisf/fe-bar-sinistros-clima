@@ -23,6 +23,7 @@ resources:
               endpoint_parecer: sinistros-clima-parecer-${bundle.target}
               lotes_validacao: "1"
               max_por_padrao: "25"
+              prompts: "v1,v2"
               publicar: "sim"  # "nao" só avalia (ex.: comparar outro LLM no mesmo dataset), sem publicar nada
       environments:
         - environment_key: ml
