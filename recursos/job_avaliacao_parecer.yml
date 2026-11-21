@@ -23,6 +23,7 @@ resources:
               endpoint_parecer: sinistros-clima-parecer-${bundle.target}
               lotes_validacao: "1"
               max_por_padrao: "25"
+              publicar: "sim"  # "nao" só avalia (ex.: comparar outro LLM no mesmo dataset), sem publicar nada
       environments:
         - environment_key: ml
           spec:
@@ -32,4 +33,5 @@ resources:
               - ${var.pacote_python}
               - lightgbm==4.7.0  # para pontuar com o modelo de suspeita (champion)
               - mlflow==3.18.0
+              - databricks-agents  # Evaluation Datasets no UC (mlflow.genai.datasets delega a ele no Databricks)
               - matplotlib

@@ -61,13 +61,16 @@ from parecer.prompts import PROMPTS
 from regras.features import COLUNAS_ENTRADA, preparar_entrada
 
 PARAMETROS = {"catalogo": "", "schema_silver": "", "schema_ml": "", "experimento": "", "endpoint_llm": "",
-              "endpoint_parecer": "", "lotes_validacao": "1", "max_por_padrao": "25"}
+              "endpoint_parecer": "", "lotes_validacao": "1", "max_por_padrao": "25", "publicar": "sim"}
 for nome, padrao in PARAMETROS.items():
     dbutils.widgets.text(nome, padrao)  # noqa: F821 (dbutils é injetado pelo Databricks)
 P = {nome: dbutils.widgets.get(nome) for nome in PARAMETROS}  # noqa: F821
 assert all(P.values()), f"parâmetros do job ausentes: {[k for k, v in P.items() if not v]}"
 SILVER, ML = f"{P['catalogo']}.{P['schema_silver']}", f"{P['catalogo']}.{P['schema_ml']}"
 LOTES = sorted({int(x) for x in P["lotes_validacao"].split(",") if x.strip()})
+# publicar = "nao": só avalia (ex.: comparar outro LLM no mesmo dataset), sem mexer no alias, no modelo nem no endpoint
+PUBLICAR = P["publicar"].strip().lower() == "sim"
+SUFIXO_RUN = "" if PUBLICAR else f"_{P['endpoint_llm'].removeprefix('databricks-')}"
 NOME_PROMPT, NOME_MODELO = f"{ML}.prompt_parecer", f"{ML}.parecer_sinistro"
 NOME_DATASET = f"{ML}.avaliacao_parecer_dataset"
 GABARITO = f"/Volumes/{P['catalogo']}/{P['schema_ml']}/restrito/gabarito"
@@ -110,16 +113,21 @@ registros = [{"inputs": {"entrada": juntar_score(json.loads(r.entrada_json), r.s
               "expectations": av.expectativas(r.padrao, r.decisao_esperada, r.valor_devido, r.cobertura_necessaria)}
              for r in amostra.itertuples()]
 
-try:  # recriado a cada execução: o dataset reflete os lotes de validação atuais
+if not PUBLICAR:  # comparação de LLM: usa os mesmos casos, sem recriar o dataset de produção
+    dataset = registros
+try:  # recriado a cada execução publicada: o dataset reflete os lotes de validação atuais
     mlflow.genai.datasets.get_dataset(name=NOME_DATASET)
     existe = True
 except Exception as e:  # noqa: BLE001 (o código do erro de "não existe" varia; qualquer outro erro reaparece no create)
     existe, motivo = False, f"{type(e).__name__}: {str(e)[:120]}"
-if existe:
+if existe and PUBLICAR:
     mlflow.genai.datasets.delete_dataset(name=NOME_DATASET)
-dataset = mlflow.genai.datasets.create_dataset(name=NOME_DATASET, experiment_id=[EXPERIMENTO_ID],
-                                               tags={"lotes_validacao": P["lotes_validacao"], "fase": "4"})
-dataset.merge_records(registros)
+if PUBLICAR:
+    # no Databricks, create_dataset não aceita tags (a governança é do UC): a descrição vai como COMMENT da tabela
+    dataset = mlflow.genai.datasets.create_dataset(name=NOME_DATASET, experiment_id=[EXPERIMENTO_ID])
+    dataset.merge_records(registros)
+    spark.sql(f"COMMENT ON TABLE {NOME_DATASET} IS 'Avaliação do parecer prévio: {len(registros)} casos estratificados "  # noqa: F821
+              f"dos lotes de validação {P['lotes_validacao']} do evento, com expectativas do gabarito (spec 6.4).'")
 print(f"{len(registros)} casos de {len(casos)} sinistros dos lotes {LOTES} → {NOME_DATASET}")
 display(amostra.groupby("padrao").size().rename("casos").reset_index())  # noqa: F821
 
@@ -235,7 +243,7 @@ for chave, versao in VERSOES_PROMPT.items():
     def predict_fn(entrada, _template=template, _versao=str(versao)):
         return gerar_parecer(entrada, _template, chamar, _versao)
 
-    with mlflow.start_run(run_name=f"prompt_{chave}_versao_{versao}") as run:
+    with mlflow.start_run(run_name=f"prompt_{chave}_versao_{versao}{SUFIXO_RUN}") as run:
         RUNS[chave] = run.info.run_id
         mlflow.log_params({"prompt": NOME_PROMPT, "prompt_versao": versao, "prompt_rotulo": chave,
                            "llm": P["endpoint_llm"], "casos": len(registros), "dataset": NOME_DATASET,
@@ -259,8 +267,9 @@ for chave, versao in VERSOES_PROMPT.items():
         plt.close("all")
     RESULTADOS[chave] = {**{k: float(v) for k, v in resultado.metrics.items()}, **extras}
     TABELAS[chave] = {"por_padrao": por_padrao, "erros": erros, "matriz": matriz, "tabela": t}
-    mlflow.genai.set_prompt_version_tag(NOME_PROMPT, versao, "recomendacao_correta",
-                                        f"{RESULTADOS[chave]['recomendacao_correta/mean']:.4f}")
+    if PUBLICAR:  # a métrica gravada no prompt é sempre a do LLM de produção
+        mlflow.genai.set_prompt_version_tag(NOME_PROMPT, versao, "recomendacao_correta",
+                                            f"{RESULTADOS[chave]['recomendacao_correta/mean']:.4f}")
     print(f"prompt {chave} (v{versao}): " + ", ".join(f"{k}={v:.3f}" for k, v in sorted(RESULTADOS[chave].items())))
 
 comparacao = pd.DataFrame(RESULTADOS).round(3).rename_axis("metrica").reset_index()
@@ -295,6 +304,13 @@ print(f"{len(erros_v2)} divergências no v2; {len(politica)} delas são apólice
 # MAGIC avaliada agora, vale a métrica desta execução; senão, a que ficou gravada na tag da versão.
 
 # COMMAND ----------
+
+if not PUBLICAR:
+    resultado = {"dataset": NOME_DATASET, "casos": len(registros), "llm": P["endpoint_llm"], "versoes_prompt": VERSOES_PROMPT,
+                 "runs": RUNS, "publicar": False,
+                 "metricas": {c: {k: round(v, 4) for k, v in m.items()} for c, m in RESULTADOS.items()}}
+    print(json.dumps(resultado, ensure_ascii=False, indent=2))
+    dbutils.notebook.exit(json.dumps(resultado, ensure_ascii=False))  # noqa: F821
 
 metrica = {c: RESULTADOS[c]["recomendacao_correta/mean"] for c in VERSOES_PROMPT}
 candidato = max(VERSOES_PROMPT, key=lambda c: (metrica[c], c == "v2"))
