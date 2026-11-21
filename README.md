@@ -15,7 +15,7 @@ Protótipo para o **FE Bar**. Seguradoras de ramos patrimoniais (residencial e e
 | Build: fase 0 (ambiente) | ✅ Concluída |
 | Build: fase 1 (dados) | ✅ Concluída (`evidencias/00b-geracao-dados.md`, `evidencias/00c-conferencia-volume.md`) |
 | Build: fase 2 (pipeline bronze e silver) | ✅ Concluída com o lote 1 (`evidencias/01-ingestao.md`); custo em `evidencias/09-custo-real.md` aguarda o faturamento |
-| Build: fase 3 (modelo de suspeita) | ✅ LightGBM no UC com alias `champion`: AUC de 0,997 no teste de 2025 e de 0,985 no lote 1 do evento (`evidencias/04-ml.md`, D-021) |
+| Build: fase 3 (modelo de suspeita) | ✅ LightGBM no UC com alias `champion`. Teste de 2025: AUC de 0,997 contra 0,960 da linha de base de regras, e 55% menos suspeitos liberados no fast track. Lote 1 do evento: AUC de 0,983 (`evidencias/04-ml.md`, D-021) |
 | Evidências de execução | ⏳ Pendente |
 | Deck de apresentação | ⏳ Pendente |
 | Ensaio do roleplay | ⏳ Pendente |
