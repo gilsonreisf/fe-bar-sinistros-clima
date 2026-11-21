@@ -1,22 +1,45 @@
-# Custo real medido (lote 1 do evento)
+# Custo real medido e custo por unidade
 
-Executado em 2026-11-20 20:34 com `uv run python scripts/registrar_evidencia.py src/governanca/92_custo.sql` (catálogo e schemas lidos do `.env`; D-016).
+Gerado em 2026-11-21 10:34 com `uv run python scripts/custo_por_unidade.py`, a partir de `system.billing.usage` com o preço de lista (`system.billing.list_prices`).
 
-## Consulta 1
+> Valores de **referência, a calibrar na PoC**: preço de lista, workspace de desenvolvimento e faturamento com algumas horas de atraso (coluna `faturado_ate`). O volume por unidade depende do cliente (PDFs por aviso, tamanho dos documentos e LLM escolhido).
 
-```sql
-SELECT u.usage_date, u.billing_origin_product, u.sku_name,
-  round(sum(u.usage_quantity), 3) AS quantidade, any_value(u.usage_unit) AS unidade,
-  round(sum(u.usage_quantity * lp.pricing.default), 2) AS custo_lista_usd
-FROM system.billing.usage u
-LEFT JOIN system.billing.list_prices lp
-  ON lp.sku_name = u.sku_name AND lp.cloud = u.cloud
-  AND u.usage_start_time >= lp.price_start_time
-  AND (lp.price_end_time IS NULL OR u.usage_start_time < lp.price_end_time)
-WHERE u.workspace_id = '7474657549414280' AND u.usage_date >= DATE'2026-11-20'
-GROUP BY ALL ORDER BY u.usage_date, custo_lista_usd DESC
-```
+## Custo por unidade (o que escala com o evento)
 
-| usage_date | billing_origin_product | sku_name | quantidade | unidade | custo_lista_usd |
-|---|---|---|---|---|---|
-**Situação em 2026-11-20 20:34:** o faturamento do processamento do lote 1 (800 avisos e 951 PDFs com `ai_parse_document` e `ai_extract`, pipeline serverless) ainda não chegou ao `system.billing.usage`, que costuma atrasar algumas horas. A consulta é refeita no início da fase 5, **antes** de publicar os lotes 2 a 10 (D-017), e este arquivo é regenerado com os valores medidos.
+| unidade | volume medido | custo medido | custo médio por unidade |
+|---|---|---|---|
+| PDF lido e extraído (`ai_parse_document` + `ai_extract`) | 9.705 PDFs | US$ 33,45 | US$ 0,0034 |
+| Aviso processado no pipeline (PDFs + computação serverless) | 8.000 avisos | US$ 37,21 | US$ 0,0047 |
+| Parecer prévio em lote (Claude Haiku 5.5) | 3.217 pareceres já faturados | US$ 3,06 | US$ 0,0010 |
+
+- **Por sinistro completo** (pipeline + parecer): cerca de **US$ 0,006**. Em um evento de 8 mil avisos, isso dá cerca de US$ 44,82.
+- O parecer do app ("Reanalisar com IA", Claude Sonnet 5.5 no endpoint) é sob demanda: cerca de US$ 0,02 por chamada pela medição de tokens da fase 4 (D-022).
+- Custo fixo de operação (não por unidade): o endpoint do parecer e o Lakebase com scale-to-zero, e o SQL Warehouse do painel e do Genie enquanto estiver ligado.
+
+## Tudo o que foi faturado no workspace desde 2026-11-20 (total US$ 77,76, inclui desenvolvimento)
+
+| produto | sku | recurso | quantidade | unidade | custo_lista_usd | faturado_ate |
+|---|---|---|---|---|---|---|
+| SQL | ENTERPRISE_SERVERLESS_SQL_COMPUTE_US_WEST_OREGON | 4648e87d2d68b63f | 36.81 | DBU | 25.77 | 2026-11-21T05:00:00.000Z |
+| AI_FUNCTIONS | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | databricks-ai-parse-document | 327.13 | DBU | 22.90 | 2026-11-21T04:20:00.000Z |
+| AI_FUNCTIONS | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | databricks-ai-extract | 150.77 | DBU | 10.55 | 2026-11-21T04:30:00.000Z |
+| MODEL_SERVING | ENTERPRISE_ANTHROPIC_MODEL_SERVING | databricks-claude-sonnet-5-5 | 79.07 | DBU | 5.53 | 2026-11-21T04:00:00.000Z |
+| DLT | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON | 427ee3a3-e204-49d3-af1e-bdce884845ac | 8.36 | DBU | 3.76 | 2026-11-21T05:00:00.000Z |
+| JOBS | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON | 712482161186376 | 7.18 | DBU | 3.23 | 2026-11-21T08:00:00.000Z |
+| MODEL_SERVING | ENTERPRISE_ANTHROPIC_MODEL_SERVING | databricks-claude-haiku-5-5 | 42.62 | DBU | 2.98 | 2026-11-21T08:00:00.000Z |
+| JOBS | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON | 1046824189825132 | 1.57 | DBU | 0.71 | 2026-11-21T04:00:00.000Z |
+| LAKEBASE | ENTERPRISE_DATABASE_SERVERLESS_COMPUTE_US_WEST_OREGON |  | 1.20 | DBU | 0.63 | 2026-11-21T09:40:00.000Z |
+| INTERACTIVE | ENTERPRISE_ALL_PURPOSE_SERVERLESS_COMPUTE_US_WEST_OREGON |  | 0.63 | DBU | 0.60 | 2026-11-21T03:50:00.000Z |
+| JOBS | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON | 729707774020558 | 0.86 | DBU | 0.39 | 2026-11-21T04:00:00.000Z |
+| AGENT_EVALUATION | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON |  | 4.74 | DBU | 0.33 | 2026-11-21T04:00:00.000Z |
+| MODEL_SERVING | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | sinistros-clima-parecer-dev | 2.47 | DBU | 0.17 | 2026-11-21T04:25:05.000Z |
+| AI_GATEWAY | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | databricks-claude-haiku-5-5 | 1.08 | DBU | 0.08 | 2026-11-21T07:10:00.000Z |
+| PREDICTIVE_OPTIMIZATION | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON |  | 0.16 | DBU | 0.07 | 2026-11-21T00:00:00.000Z |
+| LAKEBASE | ENTERPRISE_JOBS_SERVERLESS_COMPUTE_US_WEST_OREGON | 3a252edf-d594-4586-8dd6-c499bd2bd992 | 0.07 | DBU | 0.03 | 2026-11-21T04:10:00.000Z |
+| NETWORKING | PUBLIC_CONNECTIVITY_DATA_PROCESSED_US_WEST_OREGON |  | 0.39 | GB | 0.02 | 2026-11-21T08:00:00.000Z |
+| DEFAULT_STORAGE | PREMIUM_DATABRICKS_STORAGE_US_WEST_OREGON |  | 0.33 | DSU | 0.01 | 2026-11-21T03:00:00.000Z |
+| NETWORKING | INTER_REGION_EGRESS_FROM_US_WEST_OREGON |  | 0.00 | GB | 0.00 | 2026-11-21T08:00:00.000Z |
+| NETWORKING | INTERNET_EGRESS_FROM_US_WEST_OREGON |  | 0.00 | GB | 0.00 | 2026-11-21T08:00:00.000Z |
+| AI_GATEWAY | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | databricks-claude-sonnet-5-5 | 0.01 | DBU | 0.00 | 2026-11-21T03:50:00.000Z |
+| LAKEBASE | ENTERPRISE_DATABRICKS_STORAGE_US_WEST_OREGON |  | 0.00 | DSU | 0.00 | 2026-11-21T09:00:00.000Z |
+| AI_GATEWAY | ENTERPRISE_SERVERLESS_REAL_TIME_INFERENCE_US_WEST_OREGON | sinistros-clima-parecer-dev | 0.00 | DBU | 0.00 | 2026-11-21T03:50:00.000Z |
