@@ -388,3 +388,222 @@ O Genie tem glossário e consultas de exemplo em português, e é avaliado com b
   - A precisão nos 10% do topo é trivial quando a prevalência passa de 10%. O que importa é o vazamento na população do fast track e a comparação com a regra.
 
 **Evidências:** `evidencias/04-ml.md`, `evidencias/04-ml-features.md` e `notebooks/saidas/treino_modelo_suspeita.ipynb`.
+
+## D-022: Parecer prévio por IA, avaliação com MLflow e endpoint (fase 4)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a spec 6.2 e 6.4 pede:
+- parecer em JSON validado;
+- prompt versionado;
+- avaliação v1 × v2 com `mlflow.genai.evaluate`, métricas de código e juízes;
+- portão de qualidade;
+- modelo servido com tracing e AI Gateway.
+
+O plano está em `docs/planos/2026-11-21-fase-4-parecer-e-avaliacao.md`; os rulings, em `_interno/execucao/ledger-fase-4.md`.
+
+**Fatos verificados que mudaram o desenho:**
+- **Saída estruturada:** `databricks-claude-sonnet-5-5` não aceita `response_format` com `json_schema` nem `temperature`, e devolve o conteúdo como uma lista de partes (raciocínio + texto).
+  - O JSON sai pelo prompt e é validado em código (spec 10.3), com uma nova tentativa.
+  - Sem `temperature`, há variação entre execuções.
+- **Prompt Registry indisponível:** não está habilitado no FEVM (`FEATURE_DISABLED`), e não há API ou CLI de prévias. **Plano B:** os prompts são versionados numa tabela Delta do UC (`ml.prompt_parecer`), com as mesmas operações:
+  - versão nova só quando o texto muda (sha256);
+  - alias `producao` único;
+  - métrica por versão;
+  - o histórico Delta serve de auditoria.
+  - O texto de cada prompt também vai como artefato de cada run. A troca pelo Registry é localizada.
+- **Evaluation Dataset no UC:** `mlflow.genai.datasets` no Databricks não aceita tags e delega ao `databricks-agents`, que entrou nas dependências do job.
+
+**Escolhas:**
+- **O LLM decide, o código calcula.**
+  - O LLM devolve a recomendação e a **base do valor** (`reclamado`, `tabela_referencia`, `itens_validos` com os itens excluídos, ou `zero`).
+  - O código aplica franquia, LMI e soma dos itens. Resultado: 100% dos valores dentro de ±10% do devido no v2.
+- **Entrada única:** `silver.entrada_parecer` (MV do pipeline) monta o JSON de cada sinistro. Os mesmos dados servem a avaliação, o lote e o app. O score e os fatores do modelo de suspeita entram na entrada (integração ML → GenAI).
+- **Cláusulas sintéticas** (`src/parecer/clausulas.py`): o parecer cita códigos (CG-x.y) que o regulador confere. Não há texto real de apólice.
+- **Prompt v2 = regras explícitas, em ordem, com exemplos:**
+  - as regras específicas (laudo de dano anterior e preço acima da tabela) vêm antes da regra de apólice recente;
+  - essa ordem veio de um teste de fumaça com 8 sinistros reais, um por padrão, e há risco pequeno de sobreajuste.
+- **Juízes e métricas:**
+  - **Métricas de código:** `recomendacao_correta`, `json_valido`, `padrao_identificado` e `cita_clausula`.
+  - **Juízes:** `Correctness` (fatos esperados por padrão) e `Guidelines` (português formal, não recusar sem evidência, citar o fundamento, tom).
+  - **Valor:** a métrica é calculada fora dos scorers, só nos casos com pagamento esperado.
+- **Portão:** `producao` vai para a versão com a maior `recomendacao_correta`, desde que não fique abaixo da versão de produção atual.
+- **Modelo e endpoint:**
+  - `ml.parecer_sinistro` (*models from code*) leva o prompt de produção congelado e declara o LLM em `resources` (passthrough de credenciais).
+  - O endpoint `sinistros-clima-parecer-<target>` tem CPU Small, scale-to-zero, AI Gateway (inference table `ml.parecer_payload` e usage tracking) e tracing no experimento do parecer.
+  - É publicado pelo próprio job depois do portão: a versão só existe depois da avaliação, e no DAB isso exigiria um deploy em dois passos.
+
+**Resultado** (143 casos estratificados do lote 1, Claude Sonnet 5.5):
+
+| métrica | v1 (básico) | v2 (regras e exemplos) |
+|---|---|---|
+| recomendação correta | 66,4% | **95,1%** |
+| JSON válido | 98,6% | 100% |
+| motivos citam o fato do padrão | 89,5% | 99,3% |
+| cita a cláusula esperada | 95,1% | 95,1% |
+| valor a ±10% do devido (84 pagamentos) | 58,3% | **100%** |
+| juiz Correctness | 66,4% | 93,0% |
+| juiz Guidelines | 68,5% | 92,3% |
+
+- **As 7 divergências do v2:**
+  - 5 `prestador_concentrado`: o lote 1 ainda não tem histórico do prestador, o mesmo limite do modelo (D-021).
+  - 1 legítimo com apólice de 19 dias, que vai para `investigar` por política (CG-2.4).
+  - 1 `sem_evento_climatico` com evidência "fraca": pela regra, a falta de dado não justifica investigação.
+- **Endpoint testado ponta a ponta** (`evidencias/05-endpoint-parecer.md`): três pareceres corretos, de 5 a 7 s cada, com os traces encontrados no experimento e a inference table criada.
+  - O parecer aponta inconsistências que regra fixa não pega. Exemplo: "19 roteadores não mencionados na descrição; recomenda-se conferir".
+- **Custo medido por token:** ~3,2 mil tokens de entrada e ~950 de saída por parecer (o raciocínio pesa). Pela referência de preço do Sonnet, isso dá cerca de US$ 0,02 por parecer, um valor de referência a confirmar no faturamento (`09-custo-real.md`).
+
+**Evidências:** `evidencias/05-avaliacao-genai.md`, `evidencias/05-endpoint-parecer.md` e `notebooks/saidas/avaliacao_parecer.ipynb`.
+
+## D-023: Gold, fast track, prioridade e parecer em lote (fase 5)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a fase 5 transforma cada aviso que chega num sinistro analisado (score, parecer prévio, fast track com motivos, prioridade na fila), sem intervenção. O plano está em `docs/planos/2026-11-21-fase-5-gold-e-orquestracao.md`; os rulings, em `_interno/execucao/ledger-fase-4.md` (tasks 5.x).
+
+**Escolhas:**
+- **Orquestração:** `job_evento` (`recursos/job_evento.yml`) é disparado pela chegada de arquivos em `landing/arquivos/avisos/`. Executa o pipeline (bronze e silver) e depois o notebook `processar_evento`, com `max_concurrent_runs: 1`.
+- **Incremental e idempotente:** a seleção pega só os avisos novos e os pareceres `pendente` ou `invalido` com menos de 3 tentativas. A gravação é um `MERGE` por `id_aviso`, em blocos de 200. Uma reexecução não duplica linha nem paga um segundo parecer, e uma falha no meio não perde os blocos já gravados.
+- **O lote chama `gerar_parecer` direto, e não `ai_query` no endpoint** (desvio da spec, seção 5, por vazão).
+  - O endpoint Small com scale-to-zero atende poucas requisições simultâneas (~6 s cada).
+  - A validação do JSON, o cálculo do valor em código e o trace são os mesmos do endpoint, porque o código é o mesmo.
+  - O endpoint continua servindo o app ("Reanalisar com IA").
+- **LLM do lote = Claude Haiku 5.5**, o mais barato que passou no portão da fase 4 (até 2 p.p. abaixo do Sonnet na `recomendacao_correta`, no mesmo dataset):
+  - recomendação correta de 0,951 nos dois;
+  - Guidelines de 0,874 contra 0,923 do Sonnet (português e tom um pouco piores);
+  - tokens parecidos e ~4,8 s por chamada.
+  - O endpoint do app segue com o Sonnet, porque ali o texto é lido pelo regulador (`evidencias/05-comparacao-llm.md`).
+- **Fast track** (spec 6.3 e D-020) só quando todas as condições valem:
+  - valor ≤ R$ 5 mil, cobertura válida e evidência climática `forte`;
+  - score < 0,2;
+  - recomendação `pagar_integral` com `status_parecer = ok`;
+  - nenhum alerta bloqueante (`apolice_inexistente`, `fora_vigencia`, `datas_incoerentes`, `valor_invalido`, `causa_desconhecida`, `documento_ilegivel`, `extracao_falhou`, `preco_nao_conferido` ou `documento_ausente`).
+  - Dado nulo bloqueia, e cada sinistro guarda a lista de motivos de bloqueio.
+- **Prioridade dos demais:** 0,45 × suspeita + 0,35 × valor (÷ R$ 50 mil, teto 1) + 0,20 × espera (dias ÷ 15, teto 1). Os pesos são parâmetro do job.
+  - A suspeita pesa mais por ser a principal fonte de *leakage*, o valor por concentrar a exposição e a espera por proteger o segurado.
+- **Gold:** `gold.sinistros_analisados` (Change Data Feed ligado, para a synced table do Lakebase) e as visões `fila_regulacao`, `kpis_evento` e `sinistro_detalhe`, recriadas pelo notebook a partir de uma função pura.
+
+**Vazão e cobertura (fato medido):**
+- O pipeline levou os 10 lotes (8.000 avisos e 9.705 PDFs) à silver em cerca de 26 minutos.
+- O FMAPI limita o lote a ~21 pareceres por minuto, mesmo com 16 chamadas em paralelo.
+- A 1ª execução completa estourou o timeout de 3 h com 3.220 de 8.000 pareceres. O timeout subiu para 6 h, e uma nova execução incremental continuou sem repetir os pareceres `ok`.
+- **Cobertura final, no prazo combinado:** 7.612 de 8.000 avisos analisados (95,2%), dos quais 7.607 com parecer `ok` e 5 inválidos (vão para o regulador). Os 388 restantes ainda não entraram no gold e são pegos pela próxima execução do job, que é incremental (`evidencias/05c-gold.md`). A execução foi cancelada às 13h15, como combinado com o autor. **Em produção**, a vazão pede throughput provisionado (ou um endpoint dedicado) para o LLM do lote. Isso é dimensionamento, a calibrar na PoC.
+
+**Teste final honesto:** os lotes 2 a 10 nunca foram vistos no treino nem na avaliação do parecer. O resultado está em `evidencias/04c-teste-final.md`.
+
+## D-024: Lakebase para a operação da regulação (fase 6)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; aguarda a revisão do autor.
+
+**Contexto:** a spec 7.1 pede uma base transacional para a fila do regulador (quem está com cada caso, decisões e reanálises), com os dados analíticos do gold disponíveis em baixa latência e as decisões voltando ao lakehouse.
+
+**Escolhas:**
+- **Projeto Lakebase** `sinistros-clima` (Postgres 17, branch `production`, compute `primary` com scale-to-zero), provisionado por `scripts/provisionar_lakebase.py`, que é idempotente. O DAB ainda não cobre synced tables nem o Lakehouse Sync.
+- **Synced table do gold** (`gold.sinistros_analisados` → `gold.sinistros_analisados_lb`, modo TRIGGERED). No FEVM não há CREATE CATALOG (D-016), então o destino fica no catálogo do projeto, e não num catálogo do Lakebase. Funcionou sem restrição.
+- **Schema `operacao`, escrito pelo app** (`src/lakebase/operacao.py`):
+  - `atribuicoes`: "Assumir próximo" é atômico. A PK de `id_aviso` impede dois reguladores no mesmo caso. Os 50 primeiros candidatos são ordenados e materializados antes; depois, `pg_try_advisory_xact_lock` é tentado um a um, na ordem, e para no primeiro livre. Com o lock no `WHERE` da consulta ordenada, a 1ª versão travava todos os candidatos e o segundo regulador voltava sem caso (revisão, D-028).
+  - `decisoes_regulador`: só inserção, com `id_decisao` (UUID) gerado no cliente e `ON CONFLICT DO NOTHING`. O clique duplo não duplica a decisão (spec 10.3).
+  - `reanalises`: cada "Reanalisar com IA", com o trace.
+  - Todas com REPLICA IDENTITY FULL, requisito do Lakehouse Sync.
+- **Volta ao lakehouse pelo Lakehouse Sync (Beta):** `operacao` → `<catálogo>.operacional.lb_*_history` (histórico SCD2). Estava disponível no workspace, então o plano B (job de cópia) não foi necessário.
+- **Atualização da fila:** a synced table é TRIGGERED, e o `processar_evento` pede uma atualização no fim de cada análise (parâmetro `synced_fila`; sem ela o job não falha). Na 1ª versão isso faltava, e a fila do Postgres ficou com os 20 casos da fumaça.
+- **Fato medido:** o Lakehouse Sync leva o UUID do Postgres para o UC como `BINARY` (16 bytes). Quem lê o histórico compara por `lower(hex(id_decisao))`.
+- **Laço de retorno:** as decisões do regulador chegam ao UC e alimentam a tela de concordância IA × regulador do app. **O retreino** do modelo e do prompt com essas decisões **fica como próximo passo** (corte aceito pelo autor para caber no prazo).
+
+**Evidência:** `evidencias/03-lakebase.md` (dois reguladores assumindo ao mesmo tempo sem repetição, clique duplo sem duplicata e decisões lidas de volta no UC).
+
+## D-025: Governança enxuta, metric views e Genie da diretoria (fase 7)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma, dentro do escopo combinado com o autor (governança enxuta, ~20 min).
+
+**Contexto:** o FE Bar pede "Unity Catalog — govern it". Máscaras e LGPD não são requisito explícito, mas um avaliador de seguros espera ver o dado pessoal tratado.
+
+**Escolhas:**
+- **Dado pessoal marcado e mascarado na camada de consumo:**
+  - tag `classificacao_lgpd = dado_pessoal` nas colunas pessoais do bronze e da silver (CPF, nome, telefone, e-mail) e no CPF da visão de detalhe (`src/governanca/95_governanca.sql`);
+  - função `gold.mascarar_cpf`: CPF completo só para o grupo `regulacao_sinistros` (constante em `gold.visoes`), os demais veem `***.123.***-**`;
+  - a visão `gold.sinistro_detalhe`, a única de consumo com CPF, aplica a função. A função e a tag são criadas por `ddl_gold`, junto com as visões, e o job do evento as recria a cada execução.
+- **Por que visão dinâmica, e não máscara de coluna nas tabelas do pipeline:** o pipeline roda com a identidade do dono, que não está no grupo da regulação. Uma máscara na silver chegaria mascarada aos cruzamentos do próprio pipeline e quebraria as junções por CPF. Quem consome (app, Genie, analistas) lê só o gold.
+- **Ficaram de fora** (corte combinado): filtro de linha, grupos de personas e ABAC. Em produção, o grupo `regulacao_sinistros` e uma política ABAC por tag fariam a mesma coisa de forma centralizada.
+- **Comentários:** todas as tabelas, visões e funções do silver, do gold, do ml e do operacional têm comentário, inclusive as criadas pela plataforma (inference table e histórico do Lakehouse Sync).
+- **Lineage:** o capturado pelo UC está em `evidencias/02-governanca.md` e mostra fontes → bronze → silver (pipeline), visões do gold e gold → synced table do Lakebase. **Limite:** o elo silver → `gold.sinistros_analisados` não aparece, porque o job grava a partir de um DataFrame montado em pandas (score + parecer), e o histórico das decisões entra no UC pelo Lakehouse Sync, sem aresta de lineage. O caminho completo de um sinistro, do arquivo à decisão, fica provado por `id_aviso` em `evidencias/08-rastreio-ponta-a-ponta.md`.
+- **Metric views** (`src/governanca/96_metric_views.sql`) definem as métricas de negócio uma vez só: `gold.sinistros_metrics` (exposição, fast track, suspeita, ajuste sugerido pela IA) e `gold.regulacao_metrics` (concordância do regulador com a IA). O Genie e o app usam as mesmas definições, então o número da diretoria é o mesmo número da tela do coordenador.
+- **Genie "Sinistros Clima — Diretoria"** (`scripts/genie_diretoria.py`):
+  - fontes: as duas metric views e `gold.fila_regulacao` (para listar casos);
+  - 8 instruções de negócio (fast track, suspeito, "economia" sempre como ajuste sugerido, sem dado pessoal);
+  - 3 exemplos de SQL, diferentes dos benchmarks;
+  - 16 benchmarks.
+  - **Resultado: 16 de 16 corretos** (`evidencias/06-genie.md`). Na 1ª rodada foram 13 de 16. Dois benchmarks tinham SQL de referência com colunas a mais e foram corrigidos; o terceiro ganhou a instrução de "top N" com `LIMIT` em vez de `RANK`.
+  - Os IDs dos itens são estáveis (hash do texto), e reaplicar o script atualiza o espaço sem duplicar nada.
+
+**Riscos:**
+- O grupo `regulacao_sinistros` não existe no FEVM, então hoje ninguém vê o CPF completo.
+- Os benchmarks rodaram com o gold ainda crescendo (parecer em lote em andamento). Os resultados do SQL gerado e do de referência são comparados na mesma hora, então isso não distorce a nota.
+
+## D-026: App da regulação com AppKit (fase 8)
+
+**Data:** 2026-11-21. Decidido e executado de forma autônoma; o desenho de 4 telas e o Genie como espaço próprio foram combinados com o autor.
+
+**Escolhas:**
+- **AppKit** (Node + React; `app/`), com bundle próprio (`app/databricks.yml`), porque o build Node é separado do wheel Python. O bundle principal exclui `app/` do sync.
+- **Quatro telas, cada uma com a fonte certa:**
+  - **Painel do evento:** metric view no SQL Warehouse. É leitura analítica com agregação.
+  - **Fila do regulador:** Lakebase. Leitura de baixa latência na synced table e "Assumir próximo" transacional.
+  - **Detalhe:** a visão de detalhe vem do warehouse, com o CPF mascarado; a decisão e a reanálise vão ao Lakebase; "Reanalisar com IA" chama o endpoint do parecer, com AI Gateway, tracing e Sonnet.
+  - **IA sob supervisão:** metric view sobre o histórico que voltou pelo Lakehouse Sync. Aqui o laço de retorno fica visível.
+- **Nada fixo no código (D-016):**
+  - as consultas ficam em `app/consultas/*.sql`, com `${catalogo}`;
+  - `npm run consultas` gera `config/queries/` a partir do ambiente (`FE_BAR_CATALOGO`). As consultas geradas ficam fora do git e entram no deploy pelo `sync.include` do bundle;
+  - o servidor lê catálogo e prefixo de variáveis de ambiente e valida os identificadores.
+- **"Reanalisar com IA" busca a entrada no servidor**, com consulta parametrizada à `silver.entrada_parecer` usando a identidade do app. A entrada não vem do navegador, então o cliente não consegue adulterar o que vai para o LLM.
+- **Decisão idempotente:** o `id_decisao` (UUID) nasce no navegador, um por formulário, e o duplo clique grava uma linha só (testado). O motivo é obrigatório.
+- **Identidade:** o regulador é o e-mail repassado pelo Databricks Apps (`x-forwarded-email`). As consultas e a escrita usam o service principal do app, com permissões mínimas (`scripts/permissoes_app.py`):
+  - no UC, leitura do schema gold (camada de consumo, com o CPF mascarado; por schema porque o `CREATE OR REPLACE` das visões apaga grants por objeto) e da entrada do parecer, mais EXECUTE na máscara; nenhuma tabela da silver com dado pessoal;
+  - no Postgres, leitura da synced table e escrita só em `operacao`, sem DELETE.
+- **Estados de tela:** carregamento (Skeleton), vazio, erro com mensagem útil (por exemplo, o endpoint acordando do scale-to-zero) e a fonte de cada número.
+
+**Fatos medidos e limites:**
+- O deploy rejeita variável de ambiente vazia, então o prefixo de schema só entra no `config` do app quando existe.
+- A DataTable do AppKit descartava colunas com acento, e as tabelas foram trocadas por um componente próprio.
+- O JSON do warehouse traz booleanos como texto, por isso há o conversor `verdadeiro()`.
+- O app publicado exige login com MFA. Os testes de interface rodaram com `npm run dev` contra os mesmos recursos (warehouse, Lakebase e endpoint).
+- O deploy foi validado pelo estado RUNNING e pelos logs: o build remoto descreve as 8 consultas com a identidade do app.
+
+## D-027: Desvios da spec nas fases 5 a 8 (consolidado)
+
+**Data:** 2026-11-21. Registro para a revisão do autor; cada item aponta o motivo e o caminho de volta.
+
+| Spec | O que foi feito | Motivo | Como voltar ao desenho original |
+|---|---|---|---|
+| 5: parecer em lote via `ai_query` no endpoint | Chamada direta ao LLM, com o mesmo código do endpoint (D-023) | Vazão: o endpoint Small com scale-to-zero atende poucas chamadas simultâneas | Throughput provisionado e `ai_query` |
+| 7.1: synced tables `fila.fila_regulacao` e `fila.sinistro_detalhe` | Uma synced table (`gold.sinistros_analisados_lb`), com a fila montada por consulta no Postgres | Sem CREATE CATALOG no FEVM (D-016); uma tabela basta para a fila | Criar o catálogo do Lakebase e sincronizar as visões materializadas |
+| 7.1: `FOR UPDATE SKIP LOCKED` | PK + `pg_try_advisory_xact_lock` sobre os candidatos já ordenados (efeito equivalente, testado com dois reguladores em `03-lakebase.md`) | A synced table é somente leitura e não aceita lock de linha | Tabela de fila própria no Postgres com `SKIP LOCKED` |
+| 7.2: Genie embutido no app | Espaço Genie próprio, com link no cabeçalho | Corte combinado com o autor (prazo) | Plugin `genie()` do AppKit |
+| 7.2: SHAP no detalhe | Fatores de suspeita em texto | Sem `shap` no ambiente (D-021) | Calcular SHAP no treino e gravar por sinistro |
+| 7.2: "tempo até a indenização" e "valor pago" no painel | Não medidos | O sintético não tem evento de pagamento; o regulador decide no app, mas o pagamento fica fora do escopo | Ligar ao sistema de pagamentos na PoC |
+| 7.2: consultas analíticas em nome do usuário (OBO) | Consultas com o service principal do app; o CPF chega mascarado para ele | Corte de prazo; sem grupo de regulação no FEVM, o OBO mostraria o mesmo dado | Arquivos `.obo.sql` do AppKit e o escopo `sql` no app |
+| 8: `gold.mv_exposicao` (apólices expostas e LMI) | Trocada por `gold.regulacao_metrics` (concordância IA × regulador) | O laço de supervisão da IA pesa mais para o caso; a exposição por apólice fica como próximo passo | Metric view sobre apólices vigentes × clima por município e dia |
+| 9: grupos de personas, filtro de linha e ABAC | Tags LGPD + máscara do CPF na visão de consumo (D-025) | Corte combinado com o autor (governança enxuta) | Grupos da conta e políticas ABAC por tag |
+| 11: `job_preparacao`, `job_retreino` e `job_evidencias`; `provisionar.py` único | Scripts por recurso (`provisionar_lakebase.py`, `genie_diretoria.py`, `permissoes_app.py`, SQL da governança) e evidências por script | O retreino virou próximo passo (corte combinado); os scripts por recurso são idempotentes e mais fáceis de revisar | Um job que encadeie os scripts |
+| 10.2: teste de ponta a ponta com 50 avisos | Fumaça do job com 20 avisos (D-023), teste do Lakebase (`03-lakebase.md`) e rastreio de um sinistro por todas as camadas (`08-rastreio-ponta-a-ponta.md`) | Cobertura equivalente. O pipeline processou o evento completo (8 mil avisos); a cobertura do parecer em lote está em `05c-gold.md` | — |
+
+## D-028: Correções da revisão independente das fases 4 a 8
+
+**Data:** 2026-11-21. Uma revisão independente (outro agente, só leitura, sem o contexto de quem implementou) leu o diff das fases 4 a 8 e apontou 2 problemas críticos, 10 importantes e 9 menores. Os críticos e os importantes foram corrigidos, com teste, ou registrados como limite.
+
+| # | Achado | Correção |
+|---|---|---|
+| 1 (crítico) | O "ajuste sugerido pela IA" somava franquia, LMI e recusas por falta de cobertura e era chamado de "economia" ou "leakage evitado" | A medida passou a ser **"Ajuste por evidência sugerido pela IA"**: abaixo do valor contratual devido (reclamado limitado ao LMI, menos a franquia), só com cobertura válida. As recusas por falta de cobertura viraram medida própria. A mesma definição vale em `kpis_evento`, e os sinônimos de "economia" saíram. No evento sintético, o ajuste fica em ~5% da exposição, acima do 1 p.p. do caso de negócio, porque o gerador injeta ~12% de padrões de *leakage* (`docs/negocio/` segue como premissa de referência). |
+| 2 (crítico) | Um caso decidido sem atribuição continuava "livre" e era entregue de novo; qualquer um decidia o caso de outro | Só quem está com o caso em análise decide, numa instrução só (grava a decisão e conclui a atribuição). Há um índice único por `id_aviso` (uma decisão por sinistro), a rota "Assumir este caso", o motivo exibido quando a decisão não é gravada e a validação do valor (recusa = 0; até o reclamado). Testado contra o Postgres: um "intruso" não consegue decidir (`03-lakebase.md`). |
+| 3 | O advisory lock no `WHERE` da consulta ordenada travava todos os candidatos | Os candidatos são ordenados e materializados antes, e o lock é tentado um a um. Resultado: 6 de 6 pedidos simultâneos atendidos, contra 4 de 6 antes. O app faz nova tentativa com espera crescente. |
+| 4 | A espera (20% da prioridade) era constante | A espera conta pelo relógio do evento (último aviso recebido), e as regras são reaplicadas a todo o gold a cada execução do job, sem LLM. |
+| 5 | O fast track liberava casos sem orçamento ou com orçamento divergente | `sem_orcamento`, `valor_divergente`, `preco_acima_referencia` e o laudo com dano anterior passam a bloquear, sem depender do LLM. Os sinistros já analisados foram reavaliados pela reaplicação das regras. |
+| 6 | Um aviso duplicado na silver travaria o MERGE para sempre | O job deduplica por `id_aviso` e fica com a ingestão mais recente. |
+| 7 | O timeout não cobria 8 mil pareceres, e a fila só atualizava no fim | A fila do Lakebase é atualizada a cada bloco. O notebook para em `tempo_max_min` e o job pede a própria continuação (fila de execuções habilitada). |
+| 8 | Faltava `05c-gold.md`, e a cobertura não estava registrada | `05c-gold.md` foi gerado com a cobertura real do parecer em lote. |
+| 9, 10 | README: `95_governanca.sql` falhava no `executar_sql.py`, e a ordem dos passos estava errada | O `executar_sql.py` fornece `workspace_id`; os passos foram reordenados (pipeline antes do treino; gold antes do Lakebase). |
+| 11 | "Na fila do regulador" nunca diminuía | A medida virou "Encaminhados ao regulador" (fora do fast track); o que já foi decidido está em `regulacao_metrics`. |
+| 12 | "Lineage único do JSON à decisão" não batia com a evidência | O texto foi corrigido (D-025, arquitetura, README, roteiro): o elo silver → gold e o histórico das decisões não viram aresta de lineage; o caminho completo é provado por `id_aviso` no `08-rastreio`. |
+| Menores | Comentário da evidência climática (`contraria`); instrução do Genie sobre dado pessoal; decisões de teste na supervisão; custo sem a computação do job; erro enganoso no "Reanalisar"; recomendação × base do valor; variável do Genie descrita como opcional; textos do `uso-de-ia.md`; permissão sobrando | Corrigidos: recomendação e base do valor agora são validadas juntas; o "Reanalisar" confere o estado da consulta; o custo inclui a computação do job; as decisões de teste ficam identificadas; o grant de `fila_regulacao` foi retirado. |
+
+**Fica como risco registrado:** o texto do aviso e do laudo vai ao prompt sem delimitação de "dado não confiável" (#19). Mudar o prompt exigiria uma nova avaliação v2 × v3 pelo portão. A mitigação é o bloqueio determinístico do fast track (#5): o LLM sozinho não libera pagamento.

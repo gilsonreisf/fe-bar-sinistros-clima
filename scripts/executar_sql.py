@@ -64,7 +64,8 @@ def executar(w: WorkspaceClient, warehouse_id: str, comando: str) -> tuple[list[
 def main(caminho: str) -> None:
     w = WorkspaceClient(profile=os.environ.get("DATABRICKS_CONFIG_PROFILE", "fe-bar"))
     warehouse_id = os.environ["FE_BAR_WAREHOUSE_ID"]
-    sql = aplicar_variaveis(Path(caminho).read_text(encoding="utf-8"), carregar_ambiente().variaveis_sql())
+    variaveis = carregar_ambiente().variaveis_sql() | {"workspace_id": str(w.get_workspace_id())}
+    sql = aplicar_variaveis(Path(caminho).read_text(encoding="utf-8"), variaveis)
     for i, comando in enumerate(dividir_comandos(sql), start=1):
         print(f"[{i}] {comando.splitlines()[0][:100]}")
         colunas, linhas = executar(w, warehouse_id, comando)

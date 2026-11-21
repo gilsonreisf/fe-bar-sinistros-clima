@@ -1,0 +1,73 @@
+# App da regulação (spec 9; D-026). Bundle próprio porque o app tem build Node separado do pacote Python do projeto.
+# Nenhum nome fixo (D-016): catálogo, prefixo, warehouse, Lakebase, endpoint e Genie vêm das variáveis.
+# Deploy: npm run consultas && databricks bundle deploy -t dev --var warehouse_id=... --var catalogo=... (veja app/README.md)
+bundle:
+  name: sinistros-clima-app
+
+variables:
+  catalogo:
+    description: Catálogo do Unity Catalog do projeto (FE_BAR_CATALOGO)
+    default: sinistros_clima
+  prefixo_schema:
+    description: Prefixo opcional dos schemas (FE_BAR_PREFIXO_SCHEMA)
+    default: ""
+  warehouse_id:
+    description: SQL Warehouse do painel e das consultas
+  lakebase_projeto:
+    description: Projeto Lakebase (scripts/provisionar_lakebase.py)
+    default: sinistros-clima
+  endpoint_parecer:
+    description: Endpoint do parecer prévio (job de avaliação, D-022)
+    default: sinistros-clima-parecer-dev
+  genie_space_id:
+    description: Espaço Genie da diretoria (id impresso por scripts/genie_diretoria.py); obrigatório, porque o app não aceita variável de ambiente vazia
+
+sync:
+  include:
+    - config/queries/*.sql # geradas de consultas/*.sql por `npm run consultas` (fora do git)
+
+resources:
+  apps:
+    app:
+      name: sinistros-clima-${bundle.target}
+      description: "Regulação de sinistros climáticos: painel do evento, fila do regulador, detalhe com parecer da IA e supervisão"
+      source_code_path: ./
+      lifecycle:
+        started: true
+      config:
+        command: ['npm', 'run', 'start']
+        env:
+          - name: DATABRICKS_WAREHOUSE_ID
+            value_from: sql-warehouse
+          - name: LAKEBASE_ENDPOINT
+            value_from: postgres
+          - name: DATABRICKS_SERVING_ENDPOINT_NAME
+            value_from: serving-endpoint
+          - name: FE_BAR_CATALOGO
+            value: ${var.catalogo}
+          # FE_BAR_PREFIXO_SCHEMA: o app não aceita variável vazia; com prefixo, acrescente aqui
+          # `- name: FE_BAR_PREFIXO_SCHEMA` / `value: ${var.prefixo_schema}`
+          - name: FE_BAR_GENIE_SPACE_ID
+            value: ${var.genie_space_id}
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.warehouse_id}
+            permission: CAN_USE
+        - name: postgres
+          postgres:
+            branch: projects/${var.lakebase_projeto}/branches/production
+            database: projects/${var.lakebase_projeto}/branches/production/databases/databricks-postgres
+            permission: CAN_CONNECT_AND_CREATE
+        - name: serving-endpoint
+          serving_endpoint:
+            name: ${var.endpoint_parecer}
+            permission: CAN_QUERY
+
+targets:
+  dev:
+    default: true
+    workspace:
+      profile: fe-bar
+    variables:
+      catalogo: fe_bar_sinistros_catalog # catálogo criado pelo FEVM (D-016), igual ao bundle principal

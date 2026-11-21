@@ -41,3 +41,40 @@ def test_wheel_so_depende_do_que_o_ambiente_serverless_ja_tem():
     import tomllib
     deps = tomllib.loads((RAIZ / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
     assert sorted(d.split(">")[0] for d in deps) == ["numpy", "pandas"]
+
+
+JOB_PARECER = RAIZ / "recursos/job_avaliacao_parecer.yml"
+NOTEBOOK_PARECER = RAIZ / "notebooks/avaliacao_parecer.py"
+
+
+def test_job_do_parecer_sem_nomes_fixos_e_com_parametros():
+    yml = JOB_PARECER.read_text(encoding="utf-8")
+    assert "fe_bar_sinistros_catalog" not in yml and "/Users/" not in yml and "@" not in yml and "--no-deps" not in yml
+    caminhos = re.findall(r"(/Shared/\$\{bundle\.name\}/\$\{bundle\.target\}/[a-z_]+)", yml)
+    assert len(caminhos) == 2 and len(set(caminhos)) == 1, caminhos
+    for parametro in ("catalogo", "schema_silver", "schema_ml", "experimento", "endpoint_llm", "endpoint_parecer",
+                      "lotes_validacao", "max_por_padrao"):
+        assert re.search(rf"^\s+{parametro}: ", yml, re.M), parametro
+    assert "- mlflow==3.18.0" in yml and "- ${var.pacote_python}" in yml
+
+
+def test_notebook_do_parecer_avalia_registra_e_publica():
+    texto = NOTEBOOK_PARECER.read_text(encoding="utf-8")
+    assert texto.startswith("# Databricks notebook source") and "dbutils.notebook.exit(" in texto
+    for trecho in ("mlflow.genai.evaluate(", "Correctness()", "Guidelines(", "av.definir_producao(", "resources=[",
+                   "publicar_endpoint(", "gabarito_evento_2026.csv"):
+        assert trecho in texto, trecho
+    assert "fe_bar_sinistros_catalog" not in texto and "/Users/" not in texto
+
+
+JOB_EVENTO = RAIZ / "recursos/job_evento.yml"
+
+
+def test_job_do_evento_dispara_por_arquivo_roda_pipeline_e_analise():
+    yml = JOB_EVENTO.read_text(encoding="utf-8")
+    assert "fe_bar_sinistros_catalog" not in yml and "/Users/" not in yml and "@" not in yml
+    assert "file_arrival:" in yml and "url: /Volumes/${var.catalogo}/${var.prefixo_schema}landing/arquivos/avisos/" in yml
+    assert "pipeline_id: ${resources.pipelines.pipeline_sinistros.id}" in yml and "full_refresh: false" in yml
+    assert "max_concurrent_runs: 1" in yml and "depends_on:" in yml and "../notebooks/processar_evento.py" in yml
+    for parametro in ("catalogo", "schema_silver", "schema_gold", "schema_ml", "experimento_parecer", "llm_lote"):
+        assert re.search(rf"^\s+{parametro}: ", yml, re.M), parametro
