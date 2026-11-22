@@ -29,7 +29,7 @@ Uma plataforma, do arquivo que chega ao lakehouse até a decisão do regulador, 
 
 **Lakeflow** (Auto Loader + `ai_parse_document`/`ai_extract`) → **Unity Catalog** (governança, LGPD, metric views) → **ML** (modelo de suspeita no UC) e **GenAI** (parecer avaliado e versionado, endpoint com AI Gateway) → **gold** → **Lakebase** (fila e decisões) → **App** (AppKit) e **Genie** → decisões de volta ao UC pelo **Lakehouse Sync**.
 
-O desenho completo está em `docs/arquitetura.md`, o uso de IA (no produto e no build) em `docs/uso-de-ia.md` e o roteiro da demo em `docs/roteiro-demo.md`.
+O desenho completo está em `docs/arquitetura.md`, o uso de IA (no produto e no build) em `docs/uso-de-ia.md` e o roteiro da demo em `docs/roteiro-demo.md`. O deck para a diretoria está em `deck/deck-sinistros-clima.pdf`.
 
 ## Status
 
@@ -46,7 +46,7 @@ O desenho completo está em `docs/arquitetura.md`, o uso de IA (no produto e no 
 | Fase 8: app | ✅ `evidencias/07-app.md` (D-026) |
 | Fase 9: rastreio, custo e documentação | ✅ `evidencias/08-rastreio-ponta-a-ponta.md`, `evidencias/09-custo-real.md` |
 | Próximo passo | Retreino com as decisões dos reguladores (o laço já fecha até a tela de supervisão); desvios da spec em D-027 |
-| Deck e ensaio do roleplay | ⏳ Pendentes |
+| Deck, speaker notes e guia do roleplay | ✅ `deck/` (PowerPoint e PDF, markdown com as notas e `faq-roleplay.md`) |
 
 ## Estrutura do repositório
 
@@ -71,6 +71,7 @@ O desenho completo está em `docs/arquitetura.md`, o uso de IA (no produto e no 
 | `scripts/` | Provisão (Lakebase, Genie, permissões do app), simulação do evento, publicação do pacote e geração das evidências |
 | `dados/publicos/`, `dados/amostras/` | Dados públicos curados (com `FONTES.md`) e amostras legíveis dos avisos |
 | `evidencias/` | Evidências de execução em texto, de `00` a `09` |
+| `deck/` | Deck da apresentação (HTML, PowerPoint, PDF e markdown com as speaker notes) e o guia do roleplay |
 | `testes/` | Testes automatizados (`uv run pytest`) |
 | `databricks.yml`, `recursos/` | Bundle principal: pipeline, jobs (evento, treino, avaliação do parecer) e experimentos |
 | `_interno/` | Material de apoio local, **não versionado** |

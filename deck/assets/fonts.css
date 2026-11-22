@@ -1,0 +1,38 @@
+/* =========================================================================
+   OFFLINE FONT FALLBACK — self-hosted DM Sans / DM Mono
+   -------------------------------------------------------------------------
+   The deck loads DM Sans + DM Mono from the Google Fonts CDN (the <link> in
+   index.html) so, online, you get Google's exact webfont build. These local
+   @font-face rules are a *fallback*, not a replacement:
+
+     • This stylesheet is linked in index.html BEFORE the Google Fonts <link>.
+       @font-face rules are resolved in stylesheet order, so when the CDN
+       stylesheet loads (online) its rules come later and win — the browser
+       fetches the CDN font and never touches these .ttf files.
+     • When there is no network, the CDN <link> never registers its rules, so
+       these local rules are the only ones left and the deck still renders in
+       real DM Sans / DM Mono instead of degrading to a system font.
+
+   Net effect: official Google fonts when online, self-hosted fonts when
+   offline — no change to how you author slides. The files live in
+   resources/fonts/ (OFL-licensed, from the Databricks corporate template).
+
+   Note: the CDN also serves DM Sans 600; it is not self-hosted here, so
+   offline it falls back to the 700 face (nearest available weight).
+   ========================================================================= */
+
+/* DM Sans — self-hosted fallback */
+@font-face { font-family:'DM Sans'; font-weight:400; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-sans-regular.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:400; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-sans-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:500; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-sans-medium.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:500; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-sans-medium-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:700; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-sans-bold.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:700; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-sans-bold-italic.ttf') format('truetype'); }
+
+/* DM Mono — self-hosted fallback */
+@font-face { font-family:'DM Mono'; font-weight:300; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-mono-light.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:300; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-mono-light-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:400; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-mono-regular.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:400; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-mono-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:500; font-style:normal; font-display:swap; src:url('../resources/fonts/dm-mono-medium.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:500; font-style:italic;  font-display:swap; src:url('../resources/fonts/dm-mono-medium-italic.ttf') format('truetype'); }

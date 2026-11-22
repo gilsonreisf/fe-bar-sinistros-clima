@@ -1,0 +1,26 @@
+/* Ordem dos slides: a única fonte da ordem (o prefixo numérico é só convenção). */
+window.DECK_SLIDES = [
+  "01-capa.js",
+  "02-resumo.js",
+  "03-problema.js",
+  "04-mensagem.js",
+  "05-kpis.js",
+  "06-como-funciona.js",
+  "07-demo.js",
+  "08-resultados.js",
+  "09-valor.js",
+  "10-composicao-valor.js",
+  "11-custo.js",
+  "12-confianca.js",
+  "13-secao-tecnica.js",
+  "14-arquitetura.js",
+  "15-pronto-para-ti.js",
+  "16-poc.js",
+  "17-proximos-passos.js",
+  "18-encerramento.js",
+  "19-secao-apendice.js",
+  "20-faq-negocio.js",
+  "21-faq-tecnico.js",
+  "22-decisoes.js",
+  "23-evidencias.js"
+];

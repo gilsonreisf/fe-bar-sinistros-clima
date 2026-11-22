@@ -38,6 +38,7 @@ O projeto foi construído com o **Claude Code** (Opus 5.5) como par de engenhari
   - a vazão do FMAPI ficou em ~21 pareceres por minuto;
   - o Lakehouse Sync leva o UUID como BINARY.
 - **Revisão independente.** Ao fim das fases, um revisor separado (outro agente, sem o contexto de quem implementou) leu o diff procurando erros graves. Os pontos críticos e importantes foram corrigidos e registrados (fases 0 a 3: D-018, D-020; fases 4 a 8: D-028).
+- **Deck e roleplay.** O deck foi montado com a skill de slides da Databricks (`dbx-slides`), a partir do roteiro da demo e das evidências. Antes da exportação, passou pelas verificações automáticas de layout e de texto (`deck/tools/verify/`) e por uma conferência independente dos números contra as evidências. As speaker notes e o guia `deck/faq-roleplay.md` preparam as respostas para as duas personas.
 - **Segurança e reuso:**
   - varredura de segredos a cada commit;
   - nenhum nome de catálogo, schema ou usuário fixo no código (D-016);
